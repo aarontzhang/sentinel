@@ -1,0 +1,13 @@
+# Core Framework
+Flask==3.0.0
+Werkzeug==3.0.1
+
+# Stock Data & News
+yfinance==0.2.33
+pygooglenews==0.1.2
+
+# AI Summary Generation
+anthropic==0.39.0
+
+# Environment Variables
+python-dotenv==1.0.0

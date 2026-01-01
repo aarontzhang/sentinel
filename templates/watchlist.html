@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Watchlist - Ticker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="main-nav">
+        <div class="nav-content">
+            <div class="nav-left">
+                <h1 class="nav-logo">TICKER</h1>
+                <form method="POST" action="/add_stock" class="search-form">
+                    <input type="text" name="ticker" class="search-input" placeholder="Add ticker (e.g., AAPL)" required>
+                    <input type="hidden" name="company_name" value="">
+                </form>
+            </div>
+            <div class="nav-right">
+                <a href="/profile" class="profile-icon" title="Profile">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="8" r="4"/>
+                        <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        {% if error %}
+        <div class="error-message">{{ error }}</div>
+        {% endif %}
+
+        <div class="watchlist-info">
+            <div class="info-header">
+                <p class="last-login">Showing today's news and daily price changes</p>
+                <div class="action-buttons">
+                    <button class="reorder-btn" onclick="openReorderModal()" title="Reorder stocks">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <circle cx="8" cy="3" r="1.5"/>
+                            <circle cx="8" cy="8" r="1.5"/>
+                            <circle cx="8" cy="13" r="1.5"/>
+                        </svg>
+                    </button>
+                    <button class="refresh-btn" onclick="refreshSummaries()" title="Refresh summaries">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="stocks-grid">
+            {% if stocks %}
+                {% for stock in stocks %}
+                <div class="stock-card" data-ticker="{{ stock.stock_ticker }}" data-company="{{ stock.company_name }}">
+                    <div class="stock-header">
+                        <div class="stock-logo">
+                            <img class="logo-img" src="" alt="{{ stock.company_name }}" style="display: none;">
+                            <div class="logo-fallback">{{ stock.stock_ticker[:2] }}</div>
+                        </div>
+                        <div class="stock-info">
+                            <h3>{{ stock.company_name }}</h3>
+                            <p class="ticker">{{ stock.stock_ticker }}</p>
+                        </div>
+                        <div class="stock-settings">
+                            <button class="settings-btn" onclick="openDeleteModal('{{ stock.stock_ticker }}', '{{ stock.company_name }}')" title="Remove stock">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="4" y1="8" x2="12" y2="8"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="stock-price-display">
+                        <span class="price-value">--</span>
+                        <span class="price-change">--</span>
+                        <span class="overall-sentiment">--</span>
+                    </div>
+
+                    <div class="stock-section">
+                        <h4>News</h4>
+                        <p class="news-text">Loading news summary...</p>
+                    </div>
+
+                    <div class="stock-sources">
+                        <h5>Sources</h5>
+                        <div class="sources-list">
+                            <span class="sources-loading">Loading articles...</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <p>Your watchlist is empty. Add your first stock to get started!</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Reorder Modal -->
+    <div class="reorder-modal" id="reorderModal">
+        <div class="reorder-modal-content">
+            <div class="reorder-modal-header">
+                <h2>Reorder Stocks</h2>
+                <button class="modal-close" onclick="closeReorderModal()">&times;</button>
+            </div>
+            <div class="reorder-modal-body">
+                <p class="reorder-instruction">Drag stocks to reorder them</p>
+                <div class="reorder-list" id="reorderList">
+                    <!-- Stock items will be dynamically added here -->
+                </div>
+            </div>
+            <div class="reorder-modal-footer">
+                <button class="btn-secondary" onclick="closeReorderModal()">Cancel</button>
+                <button class="btn-primary" onclick="saveReorderAndClose()">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="delete-modal" id="deleteModal">
+        <div class="delete-modal-content">
+            <div class="delete-modal-header">
+                <h2>Remove Stock</h2>
+            </div>
+            <div class="delete-modal-body">
+                <p id="deleteModalText">Are you sure you want to remove this stock from your watchlist?</p>
+            </div>
+            <div class="delete-modal-footer">
+                <button class="btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+                <button class="btn-danger" onclick="confirmDelete()">Remove</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
