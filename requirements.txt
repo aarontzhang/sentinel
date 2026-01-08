@@ -3,11 +3,19 @@ Flask==3.0.0
 Werkzeug==3.0.1
 
 # Stock Data & News
-yfinance==0.2.33
+yfinance==1.0
 pygooglenews==0.1.2
 
 # AI Summary Generation
-anthropic==0.39.0
+anthropic==0.75.0
 
 # Environment Variables
 python-dotenv==1.0.0
+
+# Security
+Flask-Limiter==3.5.0
+Flask-WTF==1.2.1
+email-validator==2.1.0
+
+# Date Parsing
+python-dateutil==2.8.2
