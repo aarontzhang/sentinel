@@ -1,22 +1,26 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Ticker</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-    <div class="login-container">
-        <div class="login-box">
-            <h1>TICKER</h1>
-            <p class="subtitle">Track your stocks with AI-powered insights</p>
+{% extends "base.html" %}
+
+{% block title %}Login - Sentinel{% endblock %}
+
+{% block body_attrs %}style="padding-top: 0;"{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-left">
+        <h1 class="auth-logo">Sentinel</h1>
+        <p class="auth-tagline">Welcome back</p>
+    </div>
+
+    <div class="auth-right">
+        <div class="auth-form-wrapper">
+            <h2 class="auth-form-title">Sign In</h2>
 
             {% if error %}
             <div class="error-message">{{ error }}</div>
             {% endif %}
 
             <form method="POST" action="/login">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="username">Username</label>
                     <input type="text" id="username" name="username" required autofocus>
@@ -27,11 +31,11 @@
                     <input type="password" id="password" name="password" required>
                 </div>
 
-                <button type="submit" class="btn-primary">Login</button>
+                <button type="submit" class="btn-primary">Sign In</button>
             </form>
 
-            <p class="demo-info">Demo credentials: <strong>demo</strong> / <strong>password123</strong></p>
+            <p class="auth-link">Don't have an account? <a href="/register">Create account</a></p>
         </div>
     </div>
-</body>
-</html>
+</div>
+{% endblock %}

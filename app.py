@@ -1,19 +1,41 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 import sqlite3
-from datetime import datetime
-from werkzeug.security import check_password_hash
+from datetime import datetime, timedelta
+from werkzeug.security import check_password_hash, generate_password_hash
 from functools import wraps
 import yfinance as yf
 from pygooglenews import GoogleNews
 import anthropic
 import os
 import json
+import re
+from dateutil import parser as date_parser
 from dotenv import load_dotenv
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect
 
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-this-in-production'
+
+# Security Configuration
+app.secret_key = os.getenv('SECRET_KEY', os.urandom(32))
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
+
+# CSRF Protection
+csrf = CSRFProtect(app)
+
+# Rate Limiting
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
 
 # Load stock domain mappings
 with open('stock_domains.json', 'r') as f:
@@ -24,6 +46,17 @@ def get_db():
     conn = sqlite3.connect('watchlist.db')
     conn.row_factory = sqlite3.Row
     return conn
+
+def sanitize_for_ai_prompt(text):
+    """Sanitize user input before including in AI prompts to prevent prompt injection"""
+    if not text:
+        return ""
+    # Remove any control characters and limit length
+    sanitized = re.sub(r'[\x00-\x1F\x7F]', '', str(text))
+    # Remove potential prompt injection patterns
+    sanitized = sanitized.replace('\\n', ' ').replace('\\r', ' ')
+    # Limit length
+    return sanitized[:500]
 
 def login_required(f):
     @wraps(f)
@@ -40,6 +73,7 @@ def index():
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
 def login():
     if request.method == 'POST':
         username = request.form['username']
@@ -68,6 +102,69 @@ def login():
         return render_template('login.html', error='Invalid username or password')
 
     return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+@limiter.limit("5 per hour")
+def register():
+    if request.method == 'POST':
+        username = request.form['username'].strip()
+        password = request.form['password']
+        confirm_password = request.form['confirm_password']
+
+        # Validate username
+        if not re.match(r'^[a-zA-Z0-9_]{3,50}$', username):
+            return render_template('register.html',
+                error='Username must be 3-50 characters and contain only letters, numbers, and underscores')
+
+        # Validate password
+        if len(password) < 8 or len(password) > 128:
+            return render_template('register.html',
+                error='Password must be between 8 and 128 characters')
+
+        if password != confirm_password:
+            return render_template('register.html',
+                error='Passwords do not match')
+
+        # Check if username already exists
+        conn = get_db()
+        existing_user = conn.execute(
+            'SELECT id FROM users WHERE username = ?', (username,)
+        ).fetchone()
+
+        if existing_user:
+            conn.close()
+            return render_template('register.html',
+                error='Username already exists')
+
+        # Create new user with hashed password
+        password_hash = generate_password_hash(password)
+
+        try:
+            conn.execute(
+                'INSERT INTO users (username, password_hash, last_login) VALUES (?, ?, ?)',
+                (username, password_hash, datetime.now())
+            )
+            conn.commit()
+
+            # Get the new user
+            user = conn.execute(
+                'SELECT * FROM users WHERE username = ?', (username,)
+            ).fetchone()
+            conn.close()
+
+            # Log them in
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+
+            return redirect(url_for('watchlist'))
+
+        except Exception as e:
+            conn.close()
+            print(f"Error creating user: {str(e)}")
+            return render_template('register.html',
+                error='An error occurred. Please try again.')
+
+    return render_template('register.html')
 
 @app.route('/logout')
 def logout():
@@ -104,9 +201,26 @@ def watchlist():
 
 @app.route('/add_stock', methods=['POST'])
 @login_required
+@limiter.limit("30 per hour")
 def add_stock():
-    ticker = request.form['ticker'].upper()
-    company_name = request.form['company_name']
+    ticker = request.form['ticker'].strip().upper()
+    company_name = request.form.get('company_name', '').strip()
+
+    # Validate ticker format (alphanumeric, dots, hyphens only, 1-10 chars)
+    if not re.match(r'^[A-Z0-9\.\-]{1,10}$', ticker):
+        return render_template('watchlist.html',
+                             username=session['username'],
+                             stocks=get_db().execute(
+                                 'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC',
+                                 (session['user_id'],)
+                             ).fetchall(),
+                             error=f'Invalid ticker format: {ticker}. Tickers should be 1-10 characters.')
+
+    # Sanitize company name if provided
+    if company_name:
+        # Remove any HTML/script tags
+        company_name = re.sub(r'<[^>]*>', '', company_name)
+        company_name = company_name[:200]  # Limit length
 
     # Validate ticker using yfinance
     try:
@@ -154,7 +268,12 @@ def add_stock():
 
 @app.route('/remove_stock/<ticker>', methods=['POST'])
 @login_required
+@limiter.limit("30 per hour")
 def remove_stock(ticker):
+    # Validate ticker format for security
+    if not re.match(r'^[A-Z0-9\.\-]{1,10}$', ticker):
+        return redirect(url_for('watchlist'))
+
     conn = get_db()
     conn.execute(
         'DELETE FROM watchlist WHERE user_id = ? AND stock_ticker = ?',
@@ -167,6 +286,7 @@ def remove_stock(ticker):
 
 @app.route('/api/company_logo/<ticker>')
 @login_required
+@limiter.limit("100 per hour")
 def get_company_logo(ticker):
     try:
         # Look up domain in static mapping
@@ -189,6 +309,7 @@ def get_company_logo(ticker):
 
 @app.route('/api/stock_price/<ticker>')
 @login_required
+@limiter.limit("60 per hour")
 def get_stock_price(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -225,6 +346,7 @@ def get_stock_price(ticker):
 
 @app.route('/api/stock_news/<ticker>')
 @login_required
+@limiter.limit("60 per hour")
 def get_stock_news(ticker):
     try:
         conn = get_db()
@@ -242,16 +364,32 @@ def get_stock_news(ticker):
         gn = GoogleNews()
 
         search_query = f"{company_name} stock {ticker}"
-        # Get articles from last 24 hours (1 day)
-        search_results = gn.search(search_query, when='1d')
+        # Get articles from last 2 days to ensure we have enough to filter
+        search_results = gn.search(search_query, when='2d')
 
-        # If no articles found, try expanding to 2 days
-        if not search_results or 'entries' not in search_results or len(search_results['entries']) == 0:
-            search_results = gn.search(search_query, when='2d')
+        # Calculate cutoff time (24 hours ago)
+        cutoff_time = datetime.now() - timedelta(hours=24)
 
         articles = []
         if search_results and 'entries' in search_results:
-            for entry in search_results['entries'][:5]:
+            for entry in search_results['entries']:
+                # Parse the RSS published date - this is the ONLY filter we use
+                try:
+                    published_date = date_parser.parse(entry.get('published', ''))
+                    # Make timezone-naive for comparison
+                    if published_date.tzinfo is not None:
+                        published_date = published_date.replace(tzinfo=None)
+
+                    # Only include articles published in the last 24 hours
+                    if published_date < cutoff_time:
+                        print(f"Skipping old article for {ticker}: {entry.get('title', '')[:60]}... (published: {published_date})")
+                        continue
+
+                except Exception as e:
+                    print(f"Error parsing date for {ticker}: {str(e)}")
+                    # Skip articles with unparseable dates
+                    continue
+
                 article = {
                     'title': entry.get('title', ''),
                     'description': entry.get('summary', ''),
@@ -275,6 +413,10 @@ def get_stock_news(ticker):
 
                 articles.append(article)
 
+                # Stop once we have 5 recent articles
+                if len(articles) >= 5:
+                    break
+
         print(f"News for {ticker}: {len(articles)} articles, {sum(1 for a in articles if a.get('image'))} with images")
 
         return jsonify({
@@ -289,6 +431,7 @@ def get_stock_news(ticker):
 
 @app.route('/api/stock_summary/<ticker>')
 @login_required
+@limiter.limit("30 per hour")  # Lower limit for AI endpoints
 def get_stock_summary(ticker):
     try:
         api_key = os.getenv('CLAUDE_API_KEY')
@@ -305,8 +448,12 @@ def get_stock_summary(ticker):
         articles = news_data['articles']
         company_name = news_data['company_name']
 
+        # Sanitize inputs before sending to AI to prevent prompt injection
+        safe_company_name = sanitize_for_ai_prompt(company_name)
+        safe_ticker = sanitize_for_ai_prompt(ticker)
+
         articles_text = "\n\n".join([
-            f"- {article['title']}\n  {article['description']}"
+            f"- {sanitize_for_ai_prompt(article['title'])}\n  {sanitize_for_ai_prompt(article['description'])}"
             for article in articles
         ])
 
@@ -317,7 +464,7 @@ def get_stock_summary(ticker):
             max_tokens=400,
             messages=[{
                 "role": "user",
-                "content": f"""Analyze these news articles about {company_name} ({ticker}) and create a structured summary.
+                "content": f"""Analyze these news articles about {safe_company_name} ({safe_ticker}) and create a structured summary.
 
 Break down the news into 2-4 distinct topics/categories (e.g., acquisitions, earnings, product launches, stock performance, regulatory news, etc.).
 
@@ -351,6 +498,7 @@ Articles:
 
 @app.route('/api/stock_sentiment/<ticker>')
 @login_required
+@limiter.limit("30 per hour")  # Lower limit for AI endpoints
 def get_stock_sentiment(ticker):
     try:
         api_key = os.getenv('CLAUDE_API_KEY')
@@ -392,9 +540,13 @@ def get_stock_sentiment(ticker):
         price_change = price_data.get('change_percent', 0) if 'error' not in price_data else 0
         current_price = price_data.get('current_price', 'N/A') if 'error' not in price_data else 'N/A'
 
+        # Sanitize inputs before sending to AI to prevent prompt injection
+        safe_company_name = sanitize_for_ai_prompt(company_name)
+        safe_ticker = sanitize_for_ai_prompt(ticker)
+
         # Prepare articles with numbering for sentiment analysis
         numbered_articles = "\n".join([
-            f"{i+1}. {article['title']}"
+            f"{i+1}. {sanitize_for_ai_prompt(article['title'])}"
             for i, article in enumerate(articles)
         ])
 
@@ -405,7 +557,7 @@ def get_stock_sentiment(ticker):
             max_tokens=400,
             messages=[{
                 "role": "user",
-                "content": f"""Analyze the sentiment of these news headlines about {company_name} ({ticker}) with stock price at ${current_price} ({price_change:+.2f}% daily change).
+                "content": f"""Analyze the sentiment of these news headlines about {safe_company_name} ({safe_ticker}) with stock price at ${current_price} ({price_change:+.2f}% daily change).
 
 Headlines:
 {numbered_articles}

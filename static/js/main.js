@@ -25,6 +25,15 @@ function confirmDelete() {
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = `/remove_stock/${stockToDelete}`;
+
+        // Add CSRF token
+        const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = csrfToken;
+        form.appendChild(csrfInput);
+
         document.body.appendChild(form);
         form.submit();
     }
@@ -312,10 +321,37 @@ async function loadAllStockData(forceRefresh = false) {
 // Refresh summaries - can be called manually or on initial load
 async function refreshSummaries(forceRefresh = true) {
     const refreshBtn = document.querySelector('.refresh-btn');
+
+    // Add loading state to refresh button
     if (refreshBtn) {
         refreshBtn.disabled = true;
-        refreshBtn.style.opacity = '0.5';
+        refreshBtn.innerHTML = '<div class="spinner spinner-sm"></div>';
     }
+
+    // Add loading class to all stock cards and show skeleton loaders
+    document.querySelectorAll('.stock-card').forEach(card => {
+        card.classList.add('loading');
+
+        // Show skeleton loaders in news section
+        const newsText = card.querySelector('.news-text');
+        const sourcesList = card.querySelector('.sources-list');
+
+        if (newsText) {
+            newsText.innerHTML = `
+                <div class="skeleton skeleton-text"></div>
+                <div class="skeleton skeleton-text"></div>
+                <div class="skeleton skeleton-text"></div>
+            `;
+        }
+
+        if (sourcesList) {
+            sourcesList.innerHTML = `
+                <div class="skeleton skeleton-source"></div>
+                <div class="skeleton skeleton-source"></div>
+                <div class="skeleton skeleton-source"></div>
+            `;
+        }
+    });
 
     // Clear cache and force refresh when button is clicked
     if (forceRefresh) {
@@ -324,9 +360,19 @@ async function refreshSummaries(forceRefresh = true) {
 
     await loadAllStockData(forceRefresh);
 
+    // Remove loading states
+    document.querySelectorAll('.stock-card').forEach(card => {
+        card.classList.remove('loading');
+    });
+
+    // Restore refresh button
     if (refreshBtn) {
         refreshBtn.disabled = false;
-        refreshBtn.style.opacity = '1';
+        refreshBtn.innerHTML = `
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+            </svg>
+        `;
     }
 }
 
@@ -336,6 +382,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize drag and drop
     initializeDragAndDrop();
+
+    // Initialize pull-to-refresh for mobile
+    initPullToRefresh();
 
     // Load company logos
     loadCompanyLogos();
@@ -483,3 +532,140 @@ function initializeModalDragAndDrop() {
         });
     });
 }
+
+// Check if device is mobile
+function isMobileDevice() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+           || window.innerWidth <= 768;
+}
+
+// Haptic feedback for mobile devices
+function triggerHapticFeedback(type = 'light') {
+    if (navigator.vibrate) {
+        const patterns = {
+            light: 10,
+            medium: 20,
+            heavy: 30
+        };
+        navigator.vibrate(patterns[type] || patterns.light);
+    }
+}
+
+// Initialize haptic feedback on buttons for mobile
+function initializeHapticFeedback() {
+    if (!isMobileDevice()) return;
+
+    const buttons = document.querySelectorAll('button, .btn-primary, .btn-secondary, .btn-danger, .source-link, .reorder-btn, .refresh-btn');
+    buttons.forEach(btn => {
+        btn.addEventListener('touchstart', () => {
+            triggerHapticFeedback('light');
+        }, { passive: true });
+    });
+}
+
+// Pull-to-Refresh Implementation
+let pullToRefreshEnabled = false;
+let startY = 0;
+let currentY = 0;
+let isPulling = false;
+let refreshTriggered = false;
+
+function initPullToRefresh() {
+    if (!isMobileDevice()) return;
+
+    pullToRefreshEnabled = true;
+
+    // Create pull-to-refresh element
+    const pullToRefreshEl = document.createElement('div');
+    pullToRefreshEl.className = 'pull-to-refresh';
+    pullToRefreshEl.id = 'pullToRefresh';
+    pullToRefreshEl.innerHTML = `
+        <div class="pull-to-refresh-content">
+            <svg class="pull-to-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+            </svg>
+            <span class="pull-to-refresh-text">Pull to refresh</span>
+        </div>
+    `;
+    document.body.appendChild(pullToRefreshEl);
+
+    // Touch start
+    document.addEventListener('touchstart', (e) => {
+        if (window.scrollY === 0 && pullToRefreshEnabled && !refreshTriggered) {
+            startY = e.touches[0].pageY;
+            isPulling = false;
+        }
+    }, { passive: true });
+
+    // Touch move
+    document.addEventListener('touchmove', (e) => {
+        if (!pullToRefreshEnabled || refreshTriggered) return;
+
+        currentY = e.touches[0].pageY;
+        const pullDistance = currentY - startY;
+
+        if (window.scrollY === 0 && pullDistance > 0) {
+            isPulling = true;
+
+            const pullThreshold = 80;
+            const maxPull = 120;
+            const scaledPull = Math.min(pullDistance * 0.5, maxPull);
+
+            if (scaledPull > 10) {
+                e.preventDefault();
+                pullToRefreshEl.style.transform = `translateY(${scaledPull - 60}px)`;
+
+                if (pullDistance > pullThreshold) {
+                    pullToRefreshEl.classList.add('pulling');
+                    pullToRefreshEl.querySelector('.pull-to-refresh-text').textContent = 'Release to refresh';
+                } else {
+                    pullToRefreshEl.classList.remove('pulling');
+                    pullToRefreshEl.querySelector('.pull-to-refresh-text').textContent = 'Pull to refresh';
+                }
+            }
+        }
+    }, { passive: false });
+
+    // Touch end
+    document.addEventListener('touchend', async (e) => {
+        if (!isPulling || !pullToRefreshEnabled || refreshTriggered) {
+            isPulling = false;
+            return;
+        }
+
+        const pullDistance = currentY - startY;
+        const pullThreshold = 80;
+
+        if (pullDistance > pullThreshold) {
+            // Trigger refresh
+            refreshTriggered = true;
+            pullToRefreshEl.classList.add('refreshing', 'visible');
+            pullToRefreshEl.classList.remove('pulling');
+            pullToRefreshEl.style.transform = 'translateY(0)';
+            pullToRefreshEl.querySelector('.pull-to-refresh-text').textContent = 'Refreshing...';
+
+            // Call refresh function
+            await refreshSummaries(true);
+
+            // Hide pull-to-refresh with delay
+            setTimeout(() => {
+                pullToRefreshEl.classList.remove('visible', 'refreshing');
+                pullToRefreshEl.style.transform = 'translateY(-100%)';
+                refreshTriggered = false;
+            }, 500);
+        } else {
+            // Reset
+            pullToRefreshEl.style.transform = 'translateY(-100%)';
+            pullToRefreshEl.classList.remove('pulling');
+        }
+
+        isPulling = false;
+        startY = 0;
+        currentY = 0;
+    }, { passive: true });
+}
+
+// Call haptic initialization on DOM ready
+document.addEventListener('DOMContentLoaded', () => {
+    initializeHapticFeedback();
+});

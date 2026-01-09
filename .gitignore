@@ -33,10 +33,11 @@ wheels/
 *.swo
 *~
 
-# Database
+# Database (contains user data - never commit)
 *.db
 *.sqlite
 *.sqlite3
+watchlist.db
 
 # OS
 .DS_Store

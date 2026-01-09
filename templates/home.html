@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Sentinel - AI-Powered Stock Watchlist{% endblock %}
+
+{% block body_attrs %}style="padding-top: 0;"{% endblock %}
+
+{% block extra_css %}
+<style>
+    .hero-section {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 20px;
+        background: var(--color-bg-primary);
+    }
+
+    .hero-content {
+        max-width: 1200px;
+        width: 100%;
+        text-align: center;
+    }
+
+    .hero-logo {
+        font-size: 56px;
+        font-weight: 700;
+        color: var(--color-text-primary);
+        letter-spacing: -0.02em;
+        margin-bottom: 20px;
+        font-family: 'Inter', sans-serif;
+    }
+
+    .hero-tagline {
+        font-size: 20px;
+        color: var(--color-text-secondary);
+        margin-bottom: 40px;
+        font-weight: 400;
+        letter-spacing: -0.01em;
+    }
+
+    .hero-cta {
+        display: inline-block;
+        padding: 14px 32px;
+        background: var(--color-accent);
+        color: white;
+        text-decoration: none;
+        border-radius: var(--radius-md);
+        font-size: 15px;
+        font-weight: 500;
+        transition: all var(--transition-base);
+        margin-bottom: 60px;
+    }
+
+    .hero-cta:hover {
+        background: var(--color-accent-hover);
+    }
+
+    .login-link {
+        display: block;
+        color: var(--color-text-tertiary);
+        font-size: 14px;
+        margin-top: 20px;
+    }
+
+    .login-link a {
+        color: var(--color-accent);
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .login-link a:hover {
+        color: var(--color-accent-hover);
+    }
+
+    .app-preview {
+        max-width: 1000px;
+        width: 100%;
+        margin: 0 auto;
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        box-shadow: var(--shadow-lg);
+        border: 1px solid var(--color-border-primary);
+    }
+
+    .app-preview img {
+        width: 100%;
+        height: auto;
+        display: block;
+    }
+
+    .features-section {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 24px;
+        margin-top: 80px;
+        max-width: 1000px;
+        width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .feature-card {
+        padding: 24px;
+        background: var(--color-bg-tertiary);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--color-border-primary);
+        text-align: left;
+    }
+
+    .feature-icon {
+        font-size: 32px;
+        margin-bottom: 12px;
+    }
+
+    .feature-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--color-text-primary);
+        margin-bottom: 8px;
+    }
+
+    .feature-description {
+        font-size: 14px;
+        color: var(--color-text-secondary);
+        line-height: 1.6;
+    }
+
+    @media (max-width: 768px) {
+        .hero-logo {
+            font-size: 36px;
+        }
+
+        .hero-tagline {
+            font-size: 18px;
+        }
+
+        .hero-cta {
+            padding: 12px 24px;
+            font-size: 14px;
+        }
+
+        .features-section {
+            grid-template-columns: 1fr;
+            margin-top: 60px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="hero-content">
+        <h1 class="hero-logo">Sentinel</h1>
+        <p class="hero-tagline">AI-powered market intelligence for smarter investing</p>
+        <a href="/register" class="hero-cta">Get Started</a>
+        <p class="login-link">Already have an account? <a href="/login">Sign in</a></p>
+
+        <div class="app-preview">
+            <div style="background: var(--color-bg-secondary); padding: 60px 40px; text-align: center; color: var(--color-text-tertiary);">
+                <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="margin: 0 auto;">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/>
+                </svg>
+                <p style="margin-top: 20px; font-size: 14px;">App Preview</p>
+            </div>
+        </div>
+
+        <div class="features-section">
+            <div class="feature-card">
+                <div class="feature-icon">🤖</div>
+                <h3 class="feature-title">AI-Powered Summaries</h3>
+                <p class="feature-description">Get instant, intelligent summaries of the latest news for each stock in your watchlist.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3 class="feature-title">Sentiment Analysis</h3>
+                <p class="feature-description">Understand market sentiment at a glance with bullish, bearish, and neutral indicators.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">⚡</div>
+                <h3 class="feature-title">Real-Time Updates</h3>
+                <p class="feature-description">Stay informed with daily price changes and the latest market-moving news.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

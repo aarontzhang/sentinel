@@ -1,16 +1,19 @@
-# Ticker
+# Sentinel
 
 A modern, AI-powered stock watchlist application with real-time news summaries and a sleek dark theme interface.
 
 ## Features
 
 - **AI-Powered News Summaries**: Automatically generated summaries of the latest stock news using Claude API (Sonnet 4.5)
+- **Sentiment Analysis**: Bullish/bearish/neutral sentiment analysis for overall stock and per-article indicators
+- **Daily Price Tracking**: Robin Hood-style price display with daily percentage changes
 - **Smart Caching**: Session-based caching for instant summary loading
 - **Drag-and-Drop Reordering**: Easily reorganize your watchlist with an intuitive modal interface
 - **Company Logos**: Automatic company logo fetching from Brandfetch CDN (500k requests/month free tier)
-- **Real-Time News**: Fetches latest news articles using Google News RSS feed
+- **Real-Time News**: Fetches latest news articles using Google News RSS feed (last 24 hours)
 - **Dark Theme**: Modern, sleek dark interface with Avenir font
-- **User Authentication**: Secure login/logout with session management
+- **User Authentication**: Secure registration and login with password hashing
+- **Security Features**: Rate limiting, CSRF protection, input validation, and prompt injection prevention
 - **Persistent Order**: Stock order saved to browser localStorage
 - **Delete Confirmation**: Modal confirmation before removing stocks
 
@@ -19,10 +22,11 @@ A modern, AI-powered stock watchlist application with real-time news summaries a
 - **Backend**: Python 3.x + Flask
 - **Frontend**: HTML5, CSS3 (Avenir font), Vanilla JavaScript
 - **Database**: SQLite
+- **Security**: Flask-Limiter (rate limiting), Flask-WTF (CSRF protection), Werkzeug (password hashing)
 - **APIs**:
-  - Claude API (Anthropic) for AI summaries
-  - yfinance for stock validation
-  - pygooglenews for news articles
+  - Claude API (Anthropic) for AI summaries and sentiment analysis
+  - Yahoo Finance (yfinance) for stock prices and validation
+  - Google News (pygooglenews) for news articles
   - Brandfetch CDN for company logos
 
 ## Prerequisites
@@ -46,11 +50,19 @@ pip install -r requirements.txt
 
 ### 3. Configure Environment Variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root (see `.env.example` for template):
 
 ```bash
 CLAUDE_API_KEY=your_claude_api_key_here
+SECRET_KEY=your_secret_key_here
 ```
+
+**Generate a secure SECRET_KEY:**
+```bash
+python -c "import os; print(os.urandom(32).hex())"
+```
+
+**Security Note**: Never commit your `.env` file to version control. It's already in `.gitignore`.
 
 ### 4. Initialize Database
 
@@ -58,9 +70,7 @@ CLAUDE_API_KEY=your_claude_api_key_here
 python database.py
 ```
 
-This creates the SQLite database with a demo user:
-- **Username**: `demo`
-- **Password**: `password123`
+This creates the SQLite database. The database is empty - you'll create your account on first use.
 
 ### 5. Run the Application
 
@@ -86,19 +96,20 @@ Watchlist/
 │   └── js/
 │       └── main.js        # Frontend logic (caching, reordering, modals)
 └── templates/
-    ├── login.html         # Login page with TICKER branding
+    ├── login.html         # Login page with Sentinel branding
     ├── watchlist.html     # Main watchlist page
     └── profile.html       # User profile page
 ```
 
 ## Usage
 
-1. **Login**: Use demo credentials or create your own user in the database
-2. **Add Stocks**: Enter a ticker symbol (e.g., AAPL, MSFT, GOOGL) in the search box
-3. **View AI Summaries**: AI-generated summaries load automatically with source links
-4. **Reorder Stocks**: Click the three-dot icon to drag and reorder stocks
-5. **Remove Stocks**: Click the minus icon on any stock card
-6. **Refresh Summaries**: Click the refresh icon to force-refresh all AI summaries
+1. **Sign Up**: Visit `/register` to create a new account with a secure password
+2. **Login**: Use your credentials to log in at `/login`
+3. **Add Stocks**: Enter a ticker symbol (e.g., AAPL, MSFT, GOOGL) in the search box
+4. **View Daily Updates**: See daily price changes, sentiment analysis, and AI-generated news summaries
+5. **Reorder Stocks**: Click the three-dot icon to drag and reorder stocks
+6. **Remove Stocks**: Click the minus icon on any stock card
+7. **Refresh Data**: Click the refresh icon to force-refresh all prices, sentiment, and summaries
 
 ## Key Features Explained
 
@@ -148,12 +159,43 @@ Watchlist/
 - `company_name`: Full company name
 - `date_added`: Timestamp
 
+## Security Features
+
+### Authentication & Authorization
+- **Password Hashing**: Werkzeug PBKDF2 SHA-256 with salt
+- **Session Management**: HTTP-only cookies with SameSite protection
+- **User Registration**: Username validation (3-50 chars, alphanumeric + underscores)
+- **Password Requirements**: Minimum 8 characters, maximum 128 characters
+
+### Rate Limiting
+- **Login/Registration**: 10 login attempts per minute, 5 registrations per hour
+- **Stock Operations**: 30 additions/removals per hour
+- **API Endpoints**: 30-60 requests per hour (AI endpoints have lower limits)
+- **Storage**: In-memory rate limiting (upgrade to Redis for production)
+
+### Input Validation & Sanitization
+- **Ticker Validation**: Regex validation (1-10 alphanumeric chars, dots, hyphens)
+- **SQL Injection Prevention**: Parameterized queries throughout
+- **XSS Protection**: HTML tag stripping in user inputs
+- **Prompt Injection Prevention**: Input sanitization before AI API calls
+- **CSRF Protection**: Token-based CSRF protection on all forms
+
+### Production Deployment Checklist
+- [ ] Set `SESSION_COOKIE_SECURE = True` for HTTPS
+- [ ] Set `DEBUG = False` in app.py
+- [ ] Use environment variables for all secrets
+- [ ] Implement Redis for rate limiting persistence
+- [ ] Set up proper logging and monitoring
+- [ ] Use a production-grade WSGI server (Gunicorn/uWSGI)
+- [ ] Add HTTPS/TLS certificates
+- [ ] Regular security updates for dependencies
+
 ## Development Notes
 
 - Server runs on port 5001 (configurable in app.py)
 - Debug mode enabled by default (disable in production)
-- Session-based authentication with Flask sessions
-- CSRF protection not implemented (add for production)
+- Session-based authentication with secure cookies
+- Rate limiting uses in-memory storage (consider Redis for production)
 
 ## Troubleshooting
 
