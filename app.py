@@ -88,6 +88,7 @@ def login():
         if user and check_password_hash(user['password_hash'], password):
             session['user_id'] = user['id']
             session['username'] = user['username']
+            session['password'] = password  # Store for profile view only
 
             conn = get_db()
             conn.execute(
@@ -155,6 +156,7 @@ def register():
             # Log them in
             session['user_id'] = user['id']
             session['username'] = user['username']
+            session['password'] = password  # Store for profile view only
 
             return redirect(url_for('watchlist'))
 
@@ -184,6 +186,16 @@ def profile():
     return render_template('profile.html',
                          username=user['username'],
                          password_hash=user['password_hash'])
+
+@app.route('/api/get_password')
+@login_required
+def get_password():
+    """Securely retrieve password from session (for profile view only)"""
+    password = session.get('password')
+    if password:
+        return jsonify({'success': True, 'password': password})
+    else:
+        return jsonify({'success': False, 'message': 'Password not available in session'})
 
 @app.route('/watchlist')
 @login_required

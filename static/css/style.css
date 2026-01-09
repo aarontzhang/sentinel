@@ -691,17 +691,19 @@ body {
 .price-value {
     font-size: 28px;
     font-weight: 600;
-    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    font-family: 'Inter', sans-serif;
     color: var(--color-text-primary);
     font-variant-numeric: tabular-nums;
 }
 
 .price-change {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 600;
-    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    font-family: 'Inter', sans-serif;
+    text-transform: uppercase;
     padding: 4px 10px;
     border-radius: var(--radius-sm);
+    letter-spacing: 0.5px;
     font-variant-numeric: tabular-nums;
 }
 
@@ -904,10 +906,40 @@ body {
     margin: 0;
 }
 
-.password-masked {
-    font-size: 20px;
-    color: #fff;
-    letter-spacing: 4px;
+.password-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.password-display {
+    font-size: 16px;
+    color: var(--color-text-primary);
+    letter-spacing: 2px;
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+}
+
+.password-toggle {
+    background: none;
+    border: none;
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-base);
+}
+
+.password-toggle:hover {
+    color: var(--color-accent);
+    background: var(--color-bg-tertiary);
+}
+
+.password-toggle:active {
+    transform: scale(0.95);
 }
 
 .profile-actions {
