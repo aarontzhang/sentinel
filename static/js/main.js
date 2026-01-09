@@ -204,100 +204,6 @@ async function loadStockPriceAndSentiment(ticker, card, forceRefresh = false) {
     }
 }
 
-async function loadStockNews(forceRefresh = false) {
-    const stockCards = document.querySelectorAll('.stock-card');
-    const cardsToFetch = [];
-
-    // First pass: Immediately load all cached data (instant, no waiting)
-    stockCards.forEach(card => {
-        const ticker = card.dataset.ticker;
-        const newsElement = card.querySelector('.news-text');
-        const sourcesList = card.querySelector('.sources-list');
-
-        if (!forceRefresh) {
-            const cachedData = getCachedData(`${ticker}_news`);
-            if (cachedData) {
-                // Load from cache instantly
-                newsElement.innerHTML = cachedData.news;
-                sourcesList.innerHTML = cachedData.sources;
-                return; // Skip this card, already loaded
-            }
-        }
-
-        // Mark for fetching
-        cardsToFetch.push({ card, ticker, newsElement, sourcesList });
-    });
-
-    // Second pass: Fetch all non-cached stocks concurrently
-    if (cardsToFetch.length > 0) {
-        // Start all fetches concurrently with small staggered delays
-        const fetchPromises = cardsToFetch.map(async ({ card, ticker, newsElement, sourcesList }, index) => {
-            // Stagger the start times slightly to avoid overwhelming the API
-            if (index > 0) {
-                await sleep(index * 300); // 300ms stagger between each request start
-            }
-
-            newsElement.textContent = 'Generating news summary...';
-
-            try {
-                // Fetch news and summary concurrently for this stock
-                const [newsResponse, summaryResponse] = await Promise.all([
-                    fetch(`/api/stock_news/${ticker}`),
-                    fetch(`/api/stock_summary/${ticker}`)
-                ]);
-
-                const newsData = await newsResponse.json();
-                const summaryData = await summaryResponse.json();
-
-                let sourcesHTML = '';
-                if (!newsData.error && newsData.articles && newsData.articles.length > 0) {
-                    // Get article sentiments from card dataset (set by loadStockPriceAndSentiment)
-                    let articleSentiments = [];
-                    try {
-                        articleSentiments = JSON.parse(card.dataset.articleSentiments || '[]');
-                    } catch (e) {
-                        console.error('Error parsing article sentiments:', e);
-                    }
-
-                    newsData.articles.slice(0, 5).forEach((article, index) => {
-                        const sentiment = articleSentiments[index] || 'neutral';
-                        const sentimentClass = `article-sentiment-${sentiment}`;
-                        sourcesHTML += `<a href="${article.url}" target="_blank" class="source-link ${sentimentClass}"><span class="article-sentiment-dot"></span>${article.source || `Source ${index + 1}`}</a>`;
-                    });
-                } else {
-                    sourcesHTML = '<span class="no-sources">No sources available</span>';
-                }
-                sourcesList.innerHTML = sourcesHTML;
-
-                let newsHTML = '';
-                if (summaryData.error) {
-                    newsHTML = summaryData.error;
-                } else {
-                    // Remove markdown headers and convert **bold** to HTML
-                    newsHTML = summaryData.summary
-                        .replace(/^#{1,6}\s+.*$/gm, '') // Remove markdown headers
-                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Convert bold
-                        .trim();
-                }
-                newsElement.innerHTML = newsHTML;
-
-                // Cache the data
-                setCachedData(`${ticker}_news`, {
-                    news: newsHTML,
-                    sources: sourcesHTML
-                });
-            } catch (error) {
-                console.error(`Error fetching data for ${ticker}:`, error);
-                newsElement.textContent = 'Failed to generate news summary';
-                sourcesList.innerHTML = '<span class="no-sources">Failed to load sources</span>';
-            }
-        });
-
-        // Wait for all fetches to complete
-        await Promise.all(fetchPromises);
-    }
-}
-
 async function loadStockArticleSummaries(ticker, stockCard, forceRefresh = false) {
     const cacheKey = `stock_${ticker}_article_summaries`;
 
@@ -320,31 +226,6 @@ async function loadStockArticleSummaries(ticker, stockCard, forceRefresh = false
         }
     } catch (error) {
         console.error(`Error loading article summaries for ${ticker}:`, error);
-    }
-}
-
-async function loadDailySummary(ticker, stockCard, forceRefresh = false) {
-    const cacheKey = `stock_${ticker}_daily_summary`;
-
-    if (!forceRefresh) {
-        const cached = sessionStorage.getItem(cacheKey);
-        if (cached) {
-            const data = JSON.parse(cached);
-            displayDailySummary(stockCard, data.daily_summary);
-            return;
-        }
-    }
-
-    try {
-        const response = await fetch(`/api/stock_daily_summary/${ticker}`);
-        const data = await response.json();
-
-        if (data.daily_summary) {
-            sessionStorage.setItem(cacheKey, JSON.stringify(data));
-            displayDailySummary(stockCard, data.daily_summary);
-        }
-    } catch (error) {
-        console.error(`Error loading daily summary for ${ticker}:`, error);
     }
 }
 
@@ -454,13 +335,6 @@ async function toggleArticleDetail(headerElement, articleItem) {
     }
 }
 
-function displayDailySummary(stockCard, dailySummary) {
-    const summaryElement = stockCard.querySelector('.daily-summary');
-    if (summaryElement) {
-        summaryElement.textContent = dailySummary;
-    }
-}
-
 async function loadAllStockData(forceRefresh = false) {
     const stockCards = document.querySelectorAll('.stock-card');
 
@@ -471,11 +345,8 @@ async function loadAllStockData(forceRefresh = false) {
         // Load price/sentiment first to cache sentiment data
         await loadStockPriceAndSentiment(ticker, card, forceRefresh);
 
-        // Then load daily summary and article headlines in parallel
-        await Promise.all([
-            loadDailySummary(ticker, card, forceRefresh),
-            loadStockArticleSummaries(ticker, card, forceRefresh)
-        ]);
+        // Then load article headlines
+        await loadStockArticleSummaries(ticker, card, forceRefresh);
     });
 
     // Wait for all stocks to finish loading

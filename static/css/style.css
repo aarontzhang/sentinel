@@ -824,28 +824,6 @@ body {
     background: var(--color-bg-secondary);
 }
 
-/* Daily Summary Section */
-.stock-daily-summary {
-    margin: 20px 0;
-    padding: 0;
-}
-
-.summary-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--color-text-tertiary);
-    margin: 0 0 10px 0;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.daily-summary {
-    font-size: 14px;
-    color: var(--color-text-secondary);
-    margin: 0;
-    line-height: 1.6;
-}
-
 /* News Articles Container */
 .news-articles {
     display: flex;
