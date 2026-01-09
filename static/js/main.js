@@ -353,10 +353,11 @@ function displayArticleSummaries(ticker, stockCard, summaries) {
     const newsSection = stockCard.querySelector('.news-articles');
     if (!newsSection) return;
 
-    // Get sentiments for color coding
+    // Get sentiments and price data for lazy loading
     const sentimentCacheKey = `stock_${ticker}_price_sentiment`;
     const sentimentData = JSON.parse(sessionStorage.getItem(sentimentCacheKey) || '{}');
     const articleSentiments = sentimentData.article_sentiments || [];
+    const companyName = stockCard.dataset.company;
 
     newsSection.innerHTML = '';
 
@@ -366,8 +367,17 @@ function displayArticleSummaries(ticker, stockCard, summaries) {
         const articleItem = document.createElement('div');
         articleItem.className = 'news-article-item';
 
+        // Store data for lazy loading
+        articleItem.dataset.ticker = ticker;
+        articleItem.dataset.companyName = companyName;
+        articleItem.dataset.title = summary.title;
+        articleItem.dataset.description = summary.description;
+        articleItem.dataset.url = summary.url;
+        articleItem.dataset.source = summary.source;
+        articleItem.dataset.loaded = 'false';
+
         articleItem.innerHTML = `
-            <div class="article-header" onclick="toggleArticleDetail(this)">
+            <div class="article-header">
                 <div class="article-headline">${summary.headline}</div>
                 <div class="article-sentiment-badge ${sentiment}">${sentiment}</div>
                 <svg class="article-expand-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
@@ -376,7 +386,7 @@ function displayArticleSummaries(ticker, stockCard, summaries) {
             </div>
             <div class="article-detail">
                 <div class="article-detail-content">
-                    <p class="article-detail-text">${summary.detail}</p>
+                    <p class="article-detail-text">Loading detailed analysis...</p>
                     <a href="${summary.url}" target="_blank" class="article-source-link">
                         Read full article at ${summary.source}
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -387,14 +397,57 @@ function displayArticleSummaries(ticker, stockCard, summaries) {
             </div>
         `;
 
+        // Add click listener for lazy loading
+        const header = articleItem.querySelector('.article-header');
+        header.addEventListener('click', () => toggleArticleDetail(header, articleItem));
+
         newsSection.appendChild(articleItem);
     });
 }
 
-function toggleArticleDetail(headerElement) {
+async function toggleArticleDetail(headerElement, articleItem) {
+    const isExpanding = !headerElement.classList.contains('expanded');
+
     headerElement.classList.toggle('expanded');
     const detailElement = headerElement.nextElementSibling;
     detailElement.classList.toggle('expanded');
+
+    // Lazy load detail if expanding and not loaded yet
+    if (isExpanding && articleItem.dataset.loaded === 'false') {
+        const detailText = detailElement.querySelector('.article-detail-text');
+        detailText.textContent = 'Loading detailed analysis...';
+
+        try {
+            // Get price change from cache
+            const ticker = articleItem.dataset.ticker;
+            const sentimentCacheKey = `stock_${ticker}_price_sentiment`;
+            const sentimentData = JSON.parse(sessionStorage.getItem(sentimentCacheKey) || '{}');
+            const priceChange = sentimentData.price_change || 0;
+
+            const response = await fetch('/api/stock_article_detail', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    ticker: articleItem.dataset.ticker,
+                    company_name: articleItem.dataset.companyName,
+                    title: articleItem.dataset.title,
+                    description: articleItem.dataset.description,
+                    price_change: priceChange
+                })
+            });
+
+            const data = await response.json();
+            if (data.detail) {
+                detailText.textContent = data.detail;
+                articleItem.dataset.loaded = 'true';
+            }
+        } catch (error) {
+            console.error('Error loading article detail:', error);
+            detailText.textContent = 'Failed to load detailed analysis.';
+        }
+    }
 }
 
 function displayDailySummary(stockCard, dailySummary) {
@@ -412,9 +465,12 @@ async function loadAllStockData(forceRefresh = false) {
         const card = stockCards[i];
         const ticker = card.dataset.ticker;
 
-        // Load price/sentiment, daily summary, and article summaries in parallel
+        // IMPORTANT: Load price/sentiment FIRST to cache sentiment data
+        // Then article summaries can use the cached sentiments
+        await loadStockPriceAndSentiment(ticker, card, forceRefresh);
+
+        // Then load daily summary and article headlines in parallel
         Promise.all([
-            loadStockPriceAndSentiment(ticker, card, forceRefresh),
             loadDailySummary(ticker, card, forceRefresh),
             loadStockArticleSummaries(ticker, card, forceRefresh)
         ]);

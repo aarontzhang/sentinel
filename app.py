@@ -425,8 +425,8 @@ def get_stock_news(ticker):
 
                 articles.append(article)
 
-                # Stop once we have 5 recent articles
-                if len(articles) >= 5:
+                # Stop once we have 3 recent articles
+                if len(articles) >= 3:
                     break
 
         print(f"News for {ticker}: {len(articles)} articles, {sum(1 for a in articles if a.get('image'))} with images")
@@ -656,7 +656,7 @@ def get_article_summaries(ticker):
 
             message = client.messages.create(
                 model="claude-sonnet-4-5-20250929",
-                max_tokens=200,
+                max_tokens=100,
                 messages=[{
                     "role": "user",
                     "content": f"""Analyze this news article about {safe_company} ({safe_ticker}) stock.
@@ -665,31 +665,19 @@ Article: {safe_title}
 Description: {safe_description}
 Current stock change: {price_change:+.2f}%
 
-Provide TWO outputs in this EXACT format:
-
-HEADLINE: [One sentence explaining HOW this news affects the stock price - be specific about the mechanism]
-DETAIL: [2-3 sentences providing deeper analysis of the price impact]
-
-Focus on price impact mechanisms, not just summarizing the news."""
+Write 1-2 concise sentences explaining HOW this news affects the stock price. Be specific about the mechanism.
+Focus on price impact, not just summarizing the news."""
                 }]
             )
 
-            response_text = message.content[0].text.strip()
-
-            # Parse response
-            headline = ""
-            detail = ""
-            for line in response_text.split('\n'):
-                if line.startswith('HEADLINE:'):
-                    headline = line.replace('HEADLINE:', '').strip()
-                elif line.startswith('DETAIL:'):
-                    detail = line.replace('DETAIL:', '').strip()
+            headline = message.content[0].text.strip()
 
             summaries.append({
                 'headline': headline,
-                'detail': detail,
                 'url': article['url'],
-                'source': article['source']
+                'source': article['source'],
+                'title': article['title'],
+                'description': article['description']
             })
 
         return jsonify({
@@ -701,6 +689,55 @@ Focus on price impact mechanisms, not just summarizing the news."""
     except Exception as e:
         print(f"Error generating article summaries for {ticker}: {str(e)}")
         return jsonify({'error': 'Failed to generate article summaries'}), 500
+
+@app.route('/api/stock_article_detail', methods=['POST'])
+@login_required
+@limiter.limit("30 per hour")
+def get_article_detail():
+    """Generate detailed summary for a single article on-demand"""
+    try:
+        api_key = os.getenv('CLAUDE_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'Claude API key not configured'}), 500
+
+        data = request.get_json()
+        ticker = data.get('ticker')
+        company_name = data.get('company_name')
+        title = data.get('title')
+        description = data.get('description')
+        price_change = data.get('price_change', 0)
+
+        safe_title = sanitize_for_ai_prompt(title)
+        safe_description = sanitize_for_ai_prompt(description)
+        safe_company = sanitize_for_ai_prompt(company_name)
+        safe_ticker = sanitize_for_ai_prompt(ticker)
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        message = client.messages.create(
+            model="claude-sonnet-4-5-20250929",
+            max_tokens=150,
+            messages=[{
+                "role": "user",
+                "content": f"""Provide deeper analysis of how this news affects {safe_company} ({safe_ticker}) stock price.
+
+Article: {safe_title}
+Description: {safe_description}
+Current stock change: {price_change:+.2f}%
+
+Write 2-3 sentences providing detailed analysis of the price impact mechanism."""
+            }]
+        )
+
+        detail = message.content[0].text.strip()
+
+        return jsonify({
+            'detail': detail
+        })
+
+    except Exception as e:
+        print(f"Error generating article detail: {str(e)}")
+        return jsonify({'error': 'Failed to generate article detail'}), 500
 
 @app.route('/api/stock_daily_summary/<ticker>')
 @login_required
