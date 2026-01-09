@@ -299,23 +299,131 @@ async function loadStockNews(forceRefresh = false) {
     }
 }
 
+async function loadStockArticleSummaries(ticker, stockCard, forceRefresh = false) {
+    const cacheKey = `stock_${ticker}_article_summaries`;
+
+    if (!forceRefresh) {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+            const data = JSON.parse(cached);
+            displayArticleSummaries(ticker, stockCard, data.summaries);
+            return;
+        }
+    }
+
+    try {
+        const response = await fetch(`/api/stock_article_summaries/${ticker}`);
+        const data = await response.json();
+
+        if (data.summaries) {
+            sessionStorage.setItem(cacheKey, JSON.stringify(data));
+            displayArticleSummaries(ticker, stockCard, data.summaries);
+        }
+    } catch (error) {
+        console.error(`Error loading article summaries for ${ticker}:`, error);
+    }
+}
+
+async function loadDailySummary(ticker, stockCard, forceRefresh = false) {
+    const cacheKey = `stock_${ticker}_daily_summary`;
+
+    if (!forceRefresh) {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+            const data = JSON.parse(cached);
+            displayDailySummary(stockCard, data.daily_summary);
+            return;
+        }
+    }
+
+    try {
+        const response = await fetch(`/api/stock_daily_summary/${ticker}`);
+        const data = await response.json();
+
+        if (data.daily_summary) {
+            sessionStorage.setItem(cacheKey, JSON.stringify(data));
+            displayDailySummary(stockCard, data.daily_summary);
+        }
+    } catch (error) {
+        console.error(`Error loading daily summary for ${ticker}:`, error);
+    }
+}
+
+function displayArticleSummaries(ticker, stockCard, summaries) {
+    const newsSection = stockCard.querySelector('.news-articles');
+    if (!newsSection) return;
+
+    // Get sentiments for color coding
+    const sentimentCacheKey = `stock_${ticker}_price_sentiment`;
+    const sentimentData = JSON.parse(sessionStorage.getItem(sentimentCacheKey) || '{}');
+    const articleSentiments = sentimentData.article_sentiments || [];
+
+    newsSection.innerHTML = '';
+
+    summaries.forEach((summary, index) => {
+        const sentiment = articleSentiments[index] || 'neutral';
+
+        const articleItem = document.createElement('div');
+        articleItem.className = 'news-article-item';
+
+        articleItem.innerHTML = `
+            <div class="article-header" onclick="toggleArticleDetail(this)">
+                <div class="article-headline">${summary.headline}</div>
+                <div class="article-sentiment-badge ${sentiment}">${sentiment}</div>
+                <svg class="article-expand-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 6l4 4 4-4"/>
+                </svg>
+            </div>
+            <div class="article-detail">
+                <div class="article-detail-content">
+                    <p class="article-detail-text">${summary.detail}</p>
+                    <a href="${summary.url}" target="_blank" class="article-source-link">
+                        Read full article at ${summary.source}
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        `;
+
+        newsSection.appendChild(articleItem);
+    });
+}
+
+function toggleArticleDetail(headerElement) {
+    headerElement.classList.toggle('expanded');
+    const detailElement = headerElement.nextElementSibling;
+    detailElement.classList.toggle('expanded');
+}
+
+function displayDailySummary(stockCard, dailySummary) {
+    const summaryElement = stockCard.querySelector('.daily-summary');
+    if (summaryElement) {
+        summaryElement.textContent = dailySummary;
+    }
+}
+
 async function loadAllStockData(forceRefresh = false) {
     const stockCards = document.querySelectorAll('.stock-card');
 
-    // Load price and sentiment data for all stocks concurrently with stagger
-    const priceAndSentimentPromises = Array.from(stockCards).map(async (card, index) => {
-        if (index > 0) {
-            await sleep(index * 300);
-        }
+    // Load all data for each stock concurrently with stagger
+    for (let i = 0; i < stockCards.length; i++) {
+        const card = stockCards[i];
         const ticker = card.dataset.ticker;
-        await loadStockPriceAndSentiment(ticker, card, forceRefresh);
-    });
 
-    // Load news and price/sentiment in parallel
-    await Promise.all([
-        loadStockNews(forceRefresh),
-        ...priceAndSentimentPromises
-    ]);
+        // Load price/sentiment, daily summary, and article summaries in parallel
+        Promise.all([
+            loadStockPriceAndSentiment(ticker, card, forceRefresh),
+            loadDailySummary(ticker, card, forceRefresh),
+            loadStockArticleSummaries(ticker, card, forceRefresh)
+        ]);
+
+        // Stagger the starts by 300ms
+        if (i < stockCards.length - 1) {
+            await sleep(300);
+        }
+    }
 }
 
 // Refresh summaries - can be called manually or on initial load
@@ -333,23 +441,19 @@ async function refreshSummaries(forceRefresh = true) {
         card.classList.add('loading');
 
         // Show skeleton loaders in news section
-        const newsText = card.querySelector('.news-text');
-        const sourcesList = card.querySelector('.sources-list');
+        const newsArticles = card.querySelector('.news-articles');
+        const dailySummary = card.querySelector('.daily-summary');
 
-        if (newsText) {
-            newsText.innerHTML = `
+        if (newsArticles) {
+            newsArticles.innerHTML = `
                 <div class="skeleton skeleton-text"></div>
                 <div class="skeleton skeleton-text"></div>
                 <div class="skeleton skeleton-text"></div>
             `;
         }
 
-        if (sourcesList) {
-            sourcesList.innerHTML = `
-                <div class="skeleton skeleton-source"></div>
-                <div class="skeleton skeleton-source"></div>
-                <div class="skeleton skeleton-source"></div>
-            `;
+        if (dailySummary) {
+            dailySummary.textContent = 'Loading...';
         }
     });
 

@@ -63,6 +63,7 @@
                     <div class="stock-info">
                         <h3>{{ stock.company_name }}</h3>
                         <p class="ticker">{{ stock.stock_ticker }}</p>
+                        <p class="daily-summary">Loading...</p>
                     </div>
                     <div class="stock-settings">
                         <button class="settings-btn" onclick="openDeleteModal('{{ stock.stock_ticker }}', '{{ stock.company_name }}')" title="Remove stock">
@@ -81,19 +82,10 @@
 
                 <div class="stock-section">
                     <h4>News</h4>
-                    <div class="news-text">
+                    <div class="news-articles">
                         <div class="skeleton skeleton-text"></div>
                         <div class="skeleton skeleton-text"></div>
                         <div class="skeleton skeleton-text"></div>
-                    </div>
-                </div>
-
-                <div class="stock-sources">
-                    <h5>Sources</h5>
-                    <div class="sources-list">
-                        <div class="skeleton skeleton-source"></div>
-                        <div class="skeleton skeleton-source"></div>
-                        <div class="skeleton skeleton-source"></div>
                     </div>
                 </div>
             </div>

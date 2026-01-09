@@ -620,6 +620,154 @@ Bullish = positive for stock price, Bearish = negative for stock price, Neutral 
         print(f"Error generating sentiment for {ticker}: {str(e)}")
         return jsonify({'error': 'Failed to generate sentiment analysis'}), 500
 
+@app.route('/api/stock_article_summaries/<ticker>')
+@login_required
+@limiter.limit("20 per hour")  # Lower limit due to multiple AI calls
+def get_article_summaries(ticker):
+    """Generate individual headline and detailed summaries for each article"""
+    try:
+        api_key = os.getenv('CLAUDE_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'Claude API key not configured'}), 500
+
+        # Get news and price data
+        news_response = get_stock_news(ticker)
+        news_data = news_response.get_json()
+
+        price_response = get_stock_price(ticker)
+        price_data = price_response.get_json()
+
+        if 'error' in news_data or not news_data.get('articles'):
+            return jsonify({'summaries': []})
+
+        articles = news_data['articles']
+        company_name = news_data['company_name']
+        price_change = price_data.get('change_percent', 0) if 'error' not in price_data else 0
+
+        client = anthropic.Anthropic(api_key=api_key)
+        summaries = []
+
+        # Generate summaries for each article
+        for article in articles:
+            safe_title = sanitize_for_ai_prompt(article['title'])
+            safe_description = sanitize_for_ai_prompt(article['description'])
+            safe_company = sanitize_for_ai_prompt(company_name)
+            safe_ticker = sanitize_for_ai_prompt(ticker)
+
+            message = client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=200,
+                messages=[{
+                    "role": "user",
+                    "content": f"""Analyze this news article about {safe_company} ({safe_ticker}) stock.
+
+Article: {safe_title}
+Description: {safe_description}
+Current stock change: {price_change:+.2f}%
+
+Provide TWO outputs in this EXACT format:
+
+HEADLINE: [One sentence explaining HOW this news affects the stock price - be specific about the mechanism]
+DETAIL: [2-3 sentences providing deeper analysis of the price impact]
+
+Focus on price impact mechanisms, not just summarizing the news."""
+                }]
+            )
+
+            response_text = message.content[0].text.strip()
+
+            # Parse response
+            headline = ""
+            detail = ""
+            for line in response_text.split('\n'):
+                if line.startswith('HEADLINE:'):
+                    headline = line.replace('HEADLINE:', '').strip()
+                elif line.startswith('DETAIL:'):
+                    detail = line.replace('DETAIL:', '').strip()
+
+            summaries.append({
+                'headline': headline,
+                'detail': detail,
+                'url': article['url'],
+                'source': article['source']
+            })
+
+        return jsonify({
+            'ticker': ticker,
+            'company_name': company_name,
+            'summaries': summaries
+        })
+
+    except Exception as e:
+        print(f"Error generating article summaries for {ticker}: {str(e)}")
+        return jsonify({'error': 'Failed to generate article summaries'}), 500
+
+@app.route('/api/stock_daily_summary/<ticker>')
+@login_required
+@limiter.limit("30 per hour")
+def get_daily_summary(ticker):
+    """Generate one-sentence summary of why stock moved today"""
+    try:
+        api_key = os.getenv('CLAUDE_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'Claude API key not configured'}), 500
+
+        # Get price and sentiment data
+        price_response = get_stock_price(ticker)
+        price_data = price_response.get_json()
+
+        sentiment_response = get_stock_sentiment(ticker)
+        sentiment_data = sentiment_response.get_json()
+
+        if 'error' in price_data:
+            return jsonify({'daily_summary': 'Market data unavailable'})
+
+        price_change = price_data.get('change_percent', 0)
+        current_price = price_data.get('current_price', 'N/A')
+        overall_sentiment = sentiment_data.get('sentiment', 'neutral')
+        company_name = sentiment_data.get('company_name', ticker)
+
+        # Get article headlines for context
+        news_response = get_stock_news(ticker)
+        news_data = news_response.get_json()
+        articles = news_data.get('articles', [])
+
+        headlines = "\n".join([
+            f"- {sanitize_for_ai_prompt(article['title'])}"
+            for article in articles[:3]  # Just top 3 for context
+        ])
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        message = client.messages.create(
+            model="claude-sonnet-4-5-20250929",
+            max_tokens=100,
+            messages=[{
+                "role": "user",
+                "content": f"""Create ONE concise sentence explaining why {sanitize_for_ai_prompt(company_name)} stock moved {price_change:+.2f}% today.
+
+Price: ${current_price} ({price_change:+.2f}%)
+Overall sentiment: {overall_sentiment}
+
+Recent headlines:
+{headlines if headlines else 'No recent news'}
+
+Output ONLY the sentence, no labels or formatting. Keep it under 15 words."""
+            }]
+        )
+
+        daily_summary = message.content[0].text.strip()
+
+        return jsonify({
+            'ticker': ticker,
+            'daily_summary': daily_summary,
+            'price_change': price_change
+        })
+
+    except Exception as e:
+        print(f"Error generating daily summary for {ticker}: {str(e)}")
+        return jsonify({'error': 'Failed to generate daily summary'}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
 
