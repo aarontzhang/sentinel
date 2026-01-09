@@ -63,7 +63,6 @@
                     <div class="stock-info">
                         <h3>{{ stock.company_name }}</h3>
                         <p class="ticker">{{ stock.stock_ticker }}</p>
-                        <p class="daily-summary">Loading...</p>
                     </div>
                     <div class="stock-settings">
                         <button class="settings-btn" onclick="openDeleteModal('{{ stock.stock_ticker }}', '{{ stock.company_name }}')" title="Remove stock">
@@ -78,6 +77,10 @@
                     <span class="price-value">--</span>
                     <span class="price-change">--</span>
                     <span class="overall-sentiment">--</span>
+                </div>
+
+                <div class="stock-daily-summary">
+                    <p class="daily-summary">Loading...</p>
                 </div>
 
                 <div class="stock-section">

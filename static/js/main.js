@@ -76,8 +76,8 @@ function loadOrder() {
 async function loadCompanyLogos() {
     const stockCards = document.querySelectorAll('.stock-card');
 
-    for (let i = 0; i < stockCards.length; i++) {
-        const card = stockCards[i];
+    // Load all logos in parallel for speed
+    const logoPromises = Array.from(stockCards).map(async (card) => {
         const ticker = card.dataset.ticker;
         const logoImg = card.querySelector('.logo-img');
         const logoFallback = card.querySelector('.logo-fallback');
@@ -100,11 +100,9 @@ async function loadCompanyLogos() {
         } catch (error) {
             console.error(`Error loading logo for ${ticker}:`, error);
         }
+    });
 
-        if (i < stockCards.length - 1) {
-            await sleep(500);
-        }
-    }
+    await Promise.all(logoPromises);
 }
 
 // Cache management for summaries
@@ -194,7 +192,8 @@ async function loadStockPriceAndSentiment(ticker, card, forceRefresh = false) {
             changeClass,
             sentimentHTML,
             sentimentClass,
-            articleSentiments
+            articleSentiments,
+            price_change: change
         });
 
     } catch (error) {
@@ -353,10 +352,13 @@ function displayArticleSummaries(ticker, stockCard, summaries) {
     const newsSection = stockCard.querySelector('.news-articles');
     if (!newsSection) return;
 
-    // Get sentiments and price data for lazy loading
-    const sentimentCacheKey = `stock_${ticker}_price_sentiment`;
-    const sentimentData = JSON.parse(sessionStorage.getItem(sentimentCacheKey) || '{}');
-    const articleSentiments = sentimentData.article_sentiments || [];
+    // Get sentiments from card dataset (more reliable than cache)
+    let articleSentiments = [];
+    try {
+        articleSentiments = JSON.parse(stockCard.dataset.articleSentiments || '[]');
+    } catch (e) {
+        console.error('Error parsing article sentiments:', e);
+    }
     const companyName = stockCard.dataset.company;
 
     newsSection.innerHTML = '';
@@ -378,7 +380,10 @@ function displayArticleSummaries(ticker, stockCard, summaries) {
 
         articleItem.innerHTML = `
             <div class="article-header">
-                <div class="article-headline">${summary.headline}</div>
+                <div class="article-content-wrapper">
+                    <div class="article-source-label">${summary.source}</div>
+                    <div class="article-headline">${summary.headline}</div>
+                </div>
                 <div class="article-sentiment-badge ${sentiment}">${sentiment}</div>
                 <svg class="article-expand-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M4 6l4 4 4-4"/>
@@ -386,7 +391,7 @@ function displayArticleSummaries(ticker, stockCard, summaries) {
             </div>
             <div class="article-detail">
                 <div class="article-detail-content">
-                    <p class="article-detail-text">Loading detailed analysis...</p>
+                    <p class="article-detail-text"></p>
                     <a href="${summary.url}" target="_blank" class="article-source-link">
                         Read full article at ${summary.source}
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -420,8 +425,7 @@ async function toggleArticleDetail(headerElement, articleItem) {
         try {
             // Get price change from cache
             const ticker = articleItem.dataset.ticker;
-            const sentimentCacheKey = `stock_${ticker}_price_sentiment`;
-            const sentimentData = JSON.parse(sessionStorage.getItem(sentimentCacheKey) || '{}');
+            const sentimentData = getCachedData(`${ticker}_price_sentiment`) || {};
             const priceChange = sentimentData.price_change || 0;
 
             const response = await fetch('/api/stock_article_detail', {
@@ -460,26 +464,22 @@ function displayDailySummary(stockCard, dailySummary) {
 async function loadAllStockData(forceRefresh = false) {
     const stockCards = document.querySelectorAll('.stock-card');
 
-    // Load all data for each stock concurrently with stagger
-    for (let i = 0; i < stockCards.length; i++) {
-        const card = stockCards[i];
+    // Load ALL stocks completely in parallel for maximum speed
+    const loadPromises = Array.from(stockCards).map(async (card) => {
         const ticker = card.dataset.ticker;
 
-        // IMPORTANT: Load price/sentiment FIRST to cache sentiment data
-        // Then article summaries can use the cached sentiments
+        // Load price/sentiment first to cache sentiment data
         await loadStockPriceAndSentiment(ticker, card, forceRefresh);
 
         // Then load daily summary and article headlines in parallel
-        Promise.all([
+        await Promise.all([
             loadDailySummary(ticker, card, forceRefresh),
             loadStockArticleSummaries(ticker, card, forceRefresh)
         ]);
+    });
 
-        // Stagger the starts by 300ms
-        if (i < stockCards.length - 1) {
-            await sleep(300);
-        }
-    }
+    // Wait for all stocks to finish loading
+    await Promise.all(loadPromises);
 }
 
 // Refresh summaries - can be called manually or on initial load
@@ -546,12 +546,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize pull-to-refresh for mobile
     initPullToRefresh();
 
-    // Load company logos
-    loadCompanyLogos();
-    await sleep(500);
-
-    // Load all stock data (sentiment, summaries, etc.) from cache or fetch if not cached
-    await loadAllStockData(false);
+    // Load company logos and stock data in parallel for maximum speed
+    await Promise.all([
+        loadCompanyLogos(),
+        loadAllStockData(false)
+    ]);
 });
 
 // Reorder Modal Functions

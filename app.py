@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 load_dotenv()
 
@@ -645,40 +646,55 @@ def get_article_summaries(ticker):
         price_change = price_data.get('change_percent', 0) if 'error' not in price_data else 0
 
         client = anthropic.Anthropic(api_key=api_key)
-        summaries = []
 
-        # Generate summaries for each article
-        for article in articles:
+        # Function to generate summary for a single article
+        def generate_article_summary(article):
             safe_title = sanitize_for_ai_prompt(article['title'])
             safe_description = sanitize_for_ai_prompt(article['description'])
-            safe_company = sanitize_for_ai_prompt(company_name)
-            safe_ticker = sanitize_for_ai_prompt(ticker)
 
-            message = client.messages.create(
+            # Generate 1-sentence news summary
+            headline_message = client.messages.create(
                 model="claude-sonnet-4-5-20250929",
-                max_tokens=100,
+                max_tokens=40,
                 messages=[{
                     "role": "user",
-                    "content": f"""Analyze this news article about {safe_company} ({safe_ticker}) stock.
+                    "content": f"""Summarize this news article in exactly 1 concise sentence.
 
 Article: {safe_title}
 Description: {safe_description}
-Current stock change: {price_change:+.2f}%
 
-Write 1-2 concise sentences explaining HOW this news affects the stock price. Be specific about the mechanism.
-Focus on price impact, not just summarizing the news."""
+Write a single sentence summary of what happened. Keep it under 15 words."""
                 }]
             )
 
-            headline = message.content[0].text.strip()
+            headline = headline_message.content[0].text.strip()
 
-            summaries.append({
+            return {
                 'headline': headline,
                 'url': article['url'],
                 'source': article['source'],
                 'title': article['title'],
                 'description': article['description']
-            })
+            }
+
+        # Generate all summaries in parallel for speed
+        summaries = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_article = {executor.submit(generate_article_summary, article): article for article in articles}
+            for future in as_completed(future_to_article):
+                try:
+                    summary = future.result()
+                    summaries.append(summary)
+                except Exception as e:
+                    article = future_to_article[future]
+                    print(f"Error generating summary for article: {str(e)}")
+                    summaries.append({
+                        'headline': 'Error generating summary',
+                        'url': article['url'],
+                        'source': article['source'],
+                        'title': article['title'],
+                        'description': article['description']
+                    })
 
         return jsonify({
             'ticker': ticker,
@@ -692,6 +708,7 @@ Focus on price impact, not just summarizing the news."""
 
 @app.route('/api/stock_article_detail', methods=['POST'])
 @login_required
+@csrf.exempt
 @limiter.limit("30 per hour")
 def get_article_detail():
     """Generate detailed summary for a single article on-demand"""
@@ -719,13 +736,16 @@ def get_article_detail():
             max_tokens=150,
             messages=[{
                 "role": "user",
-                "content": f"""Provide deeper analysis of how this news affects {safe_company} ({safe_ticker}) stock price.
+                "content": f"""Analyze how this news affects {safe_company} ({safe_ticker}) stock.
 
 Article: {safe_title}
 Description: {safe_description}
 Current stock change: {price_change:+.2f}%
 
-Write 2-3 sentences providing detailed analysis of the price impact mechanism."""
+Write EXACTLY 3-5 sentences in plain text explaining the stock price impact.
+DO NOT use any markdown formatting, headers (#), bullet points, or bold text.
+Just write clear, conversational sentences. Emojis are fine.
+Focus on: what happened, why it matters, and potential price impact."""
             }]
         )
 
