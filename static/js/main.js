@@ -229,6 +229,38 @@ async function loadStockArticleSummaries(ticker, stockCard, forceRefresh = false
     }
 }
 
+async function loadDailySummary(ticker, stockCard, forceRefresh = false) {
+    const cacheKey = `stock_${ticker}_daily_summary`;
+
+    if (!forceRefresh) {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+            const data = JSON.parse(cached);
+            displayDailySummary(stockCard, data.daily_summary);
+            return;
+        }
+    }
+
+    try {
+        const response = await fetch(`/api/stock_daily_summary/${ticker}`);
+        const data = await response.json();
+
+        if (data.daily_summary) {
+            sessionStorage.setItem(cacheKey, JSON.stringify(data));
+            displayDailySummary(stockCard, data.daily_summary);
+        }
+    } catch (error) {
+        console.error(`Error loading daily summary for ${ticker}:`, error);
+    }
+}
+
+function displayDailySummary(stockCard, dailySummary) {
+    const summaryElement = stockCard.querySelector('.daily-summary');
+    if (summaryElement) {
+        summaryElement.textContent = dailySummary;
+    }
+}
+
 function displayArticleSummaries(ticker, stockCard, summaries) {
     const newsSection = stockCard.querySelector('.news-articles');
     if (!newsSection) return;
@@ -345,8 +377,11 @@ async function loadAllStockData(forceRefresh = false) {
         // Load price/sentiment first to cache sentiment data
         await loadStockPriceAndSentiment(ticker, card, forceRefresh);
 
-        // Then load article headlines
-        await loadStockArticleSummaries(ticker, card, forceRefresh);
+        // Then load daily summary and article headlines in parallel
+        await Promise.all([
+            loadDailySummary(ticker, card, forceRefresh),
+            loadStockArticleSummaries(ticker, card, forceRefresh)
+        ]);
     });
 
     // Wait for all stocks to finish loading

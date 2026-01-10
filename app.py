@@ -692,6 +692,71 @@ Focus on: what happened, why it matters, and potential price impact."""
         print(f"Error generating article detail: {str(e)}")
         return jsonify({'error': 'Failed to generate article detail'}), 500
 
+@app.route('/api/stock_daily_summary/<ticker>')
+@login_required
+@limiter.limit("30 per hour")
+def get_daily_summary(ticker):
+    """Generate one-sentence summary of why stock moved today"""
+    try:
+        api_key = os.getenv('CLAUDE_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'Claude API key not configured'}), 500
+
+        # Get price and sentiment data
+        price_response = get_stock_price(ticker)
+        price_data = price_response.get_json()
+
+        sentiment_response = get_stock_sentiment(ticker)
+        sentiment_data = sentiment_response.get_json()
+
+        if 'error' in price_data:
+            return jsonify({'daily_summary': 'Market data unavailable'})
+
+        price_change = price_data.get('change_percent', 0)
+        current_price = price_data.get('current_price', 'N/A')
+        overall_sentiment = sentiment_data.get('sentiment', 'neutral')
+        company_name = sentiment_data.get('company_name', ticker)
+
+        # Get article headlines for context
+        news_response = get_stock_news(ticker)
+        news_data = news_response.get_json()
+        articles = news_data.get('articles', [])
+
+        headlines = "\n".join([
+            f"- {sanitize_for_ai_prompt(article['title'])}"
+            for article in articles[:3]  # Just top 3 for context
+        ])
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        message = client.messages.create(
+            model="claude-sonnet-4-5-20250929",
+            max_tokens=60,
+            messages=[{
+                "role": "user",
+                "content": f"""Write ONE short sentence explaining why {sanitize_for_ai_prompt(company_name)} moved {price_change:+.2f}% today.
+
+Price: ${current_price} ({price_change:+.2f}%)
+Sentiment: {overall_sentiment}
+
+Headlines:
+{headlines if headlines else 'No recent news'}
+
+Write a single, plain sentence (no formatting). Keep it under 12 words."""
+            }]
+        )
+
+        daily_summary = message.content[0].text.strip()
+
+        return jsonify({
+            'ticker': ticker,
+            'daily_summary': daily_summary
+        })
+
+    except Exception as e:
+        print(f"Error generating daily summary for {ticker}: {str(e)}")
+        return jsonify({'error': 'Failed to generate daily summary'}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
 

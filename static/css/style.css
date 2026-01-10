@@ -468,16 +468,12 @@ body {
 
 .stocks-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+    grid-template-columns: 1fr;
     gap: 24px;
     position: relative;
     z-index: 1;
-}
-
-@media (max-width: 900px) {
-    .stocks-grid {
-        grid-template-columns: 1fr;
-    }
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .stock-card {
@@ -822,6 +818,20 @@ body {
 
 .source-link:active {
     background: var(--color-bg-secondary);
+}
+
+/* Daily Summary */
+.stock-daily-summary {
+    margin: 16px 0 20px 0;
+    padding: 0;
+}
+
+.daily-summary {
+    font-size: 13px;
+    color: var(--color-text-tertiary);
+    margin: 0;
+    line-height: 1.5;
+    font-style: italic;
 }
 
 /* News Articles Container */
@@ -1449,8 +1459,7 @@ body {
     }
 
     .stocks-grid {
-        grid-template-columns: 1fr;
-        gap: var(--spacing-lg);
+        gap: var(--spacing-md);
     }
 
     .stock-card {
