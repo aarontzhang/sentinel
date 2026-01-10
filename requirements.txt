@@ -3,8 +3,9 @@ Flask==3.0.0
 Werkzeug==3.0.1
 
 # Stock Data & News
-yfinance==1.0
+yfinance==0.2.38
 pygooglenews==0.1.2
+feedparser==6.0.11
 
 # AI Summary Generation
 anthropic==0.75.0
