@@ -320,9 +320,8 @@ body {
 }
 
 .nav-content {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 0 30px;
+    margin: 0;
+    padding: 0 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -409,15 +408,17 @@ body {
 }
 
 .container {
-    margin: 0 auto;
-    padding: 24px;
-    max-width: 1600px;
+    margin: 0;
+    padding: 0;
     position: relative;
     z-index: 1;
 }
 
 .watchlist-info {
-    margin-bottom: 20px;
+    margin-bottom: 0;
+    padding: 16px 20px;
+    background: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-border-primary);
 }
 
 .info-header {
@@ -469,26 +470,23 @@ body {
 .stocks-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 24px;
+    gap: 0;
     position: relative;
     z-index: 1;
-    max-width: 1200px;
-    margin: 0 auto;
 }
 
 .stock-card {
     background: var(--color-bg-tertiary);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
-    box-shadow: var(--shadow-sm);
-    border: 1px solid var(--color-border-primary);
+    border-radius: 0;
+    padding: 24px 20px;
+    box-shadow: none;
+    border-bottom: 1px solid var(--color-border-primary);
     transition: all var(--transition-base);
     position: relative;
 }
 
 .stock-card:hover {
-    border-color: var(--color-border-secondary);
-    box-shadow: var(--shadow-md);
+    background: var(--color-bg-secondary);
 }
 
 .stock-card.dragging {
@@ -1420,12 +1418,8 @@ body {
 
 /* Tablet breakpoint */
 @media (max-width: 1024px) {
-    .container {
-        padding: var(--spacing-lg);
-    }
-
     .nav-content {
-        padding: 0 var(--spacing-xl);
+        padding: 0 20px;
     }
 
     .search-input {
@@ -1442,7 +1436,7 @@ body {
     .nav-content {
         flex-direction: column;
         height: auto;
-        padding: var(--spacing-lg) var(--spacing-xl);
+        padding: 16px 20px;
         gap: var(--spacing-lg);
     }
 
@@ -1458,12 +1452,8 @@ body {
         font-size: 16px;
     }
 
-    .stocks-grid {
-        gap: var(--spacing-md);
-    }
-
     .stock-card {
-        padding: var(--spacing-lg);
+        padding: 20px 16px;
     }
 
     .stock-card:hover {
@@ -1563,12 +1553,16 @@ body {
 
 /* Small mobile breakpoint */
 @media (max-width: 480px) {
-    .container {
-        padding: var(--spacing-md);
+    .nav-content {
+        padding: 16px;
+    }
+
+    .watchlist-info {
+        padding: 12px 16px;
     }
 
     .stock-card {
-        padding: var(--spacing-md);
+        padding: 20px 16px;
     }
 
     .auth-left {
