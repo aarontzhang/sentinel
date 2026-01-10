@@ -1,6 +1,12 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 import sqlite3
 from datetime import datetime, timedelta
+
+# Database configuration - detect environment
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
 from werkzeug.security import check_password_hash, generate_password_hash
 from functools import wraps
 import yfinance as yf
@@ -22,7 +28,9 @@ app = Flask(__name__)
 
 # Security Configuration
 app.secret_key = os.getenv('SECRET_KEY', os.urandom(32))
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+# Auto-detect production environment (Vercel or DATABASE_URL set)
+IS_PRODUCTION = os.getenv('VERCEL') == '1' or DATABASE_URL is not None
+app.config['SESSION_COOKIE_SECURE'] = IS_PRODUCTION  # True in production (HTTPS)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
@@ -44,9 +52,19 @@ with open('stock_domains.json', 'r') as f:
     print(f"Loaded {len(STOCK_DOMAINS)} stock domains from JSON file")
 
 def get_db():
-    conn = sqlite3.connect('watchlist.db')
-    conn.row_factory = sqlite3.Row
+    """Get database connection - PostgreSQL in production, SQLite in development"""
+    if DATABASE_URL:
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    else:
+        conn = sqlite3.connect('watchlist.db')
+        conn.row_factory = sqlite3.Row
     return conn
+
+def convert_sql_placeholders(sql):
+    """Convert SQL placeholders from ? to %s for PostgreSQL"""
+    if DATABASE_URL:
+        return sql.replace('?', '%s')
+    return sql
 
 def sanitize_for_ai_prompt(text):
     """Sanitize user input before including in AI prompts to prevent prompt injection"""
@@ -82,7 +100,7 @@ def login():
 
         conn = get_db()
         user = conn.execute(
-            'SELECT * FROM users WHERE username = ?', (username,)
+            convert_sql_placeholders('SELECT * FROM users WHERE username = ?'), (username,)
         ).fetchone()
         conn.close()
 
@@ -93,7 +111,7 @@ def login():
 
             conn = get_db()
             conn.execute(
-                'UPDATE users SET last_login = ? WHERE id = ?',
+                convert_sql_placeholders('UPDATE users SET last_login = ? WHERE id = ?'),
                 (datetime.now(), user['id'])
             )
             conn.commit()
@@ -130,7 +148,7 @@ def register():
         # Check if username already exists
         conn = get_db()
         existing_user = conn.execute(
-            'SELECT id FROM users WHERE username = ?', (username,)
+            convert_sql_placeholders('SELECT id FROM users WHERE username = ?'), (username,)
         ).fetchone()
 
         if existing_user:
@@ -143,14 +161,14 @@ def register():
 
         try:
             conn.execute(
-                'INSERT INTO users (username, password_hash, last_login) VALUES (?, ?, ?)',
+                convert_sql_placeholders('INSERT INTO users (username, password_hash, last_login) VALUES (?, ?, ?)'),
                 (username, password_hash, datetime.now())
             )
             conn.commit()
 
             # Get the new user
             user = conn.execute(
-                'SELECT * FROM users WHERE username = ?', (username,)
+                convert_sql_placeholders('SELECT * FROM users WHERE username = ?'), (username,)
             ).fetchone()
             conn.close()
 
@@ -179,7 +197,7 @@ def logout():
 def profile():
     conn = get_db()
     user = conn.execute(
-        'SELECT username, password_hash FROM users WHERE id = ?',
+        convert_sql_placeholders('SELECT username, password_hash FROM users WHERE id = ?'),
         (session['user_id'],)
     ).fetchone()
     conn.close()
@@ -203,7 +221,7 @@ def get_password():
 def watchlist():
     conn = get_db()
     stocks = conn.execute(
-        'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC',
+        convert_sql_placeholders('SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
         (session['user_id'],)
     ).fetchall()
     conn.close()
@@ -224,7 +242,7 @@ def add_stock():
         return render_template('watchlist.html',
                              username=session['username'],
                              stocks=get_db().execute(
-                                 'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC',
+                                 convert_sql_placeholders('SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
                                  (session['user_id'],)
                              ).fetchall(),
                              error=f'Invalid ticker format: {ticker}. Tickers should be 1-10 characters.')
@@ -245,7 +263,7 @@ def add_stock():
             return render_template('watchlist.html',
                                  username=session['username'],
                                  stocks=get_db().execute(
-                                     'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC',
+                                     convert_sql_placeholders('SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
                                      (session['user_id'],)
                                  ).fetchall(),
                                  error=f'Invalid ticker: {ticker}. Please enter a valid stock ticker.')
@@ -261,7 +279,7 @@ def add_stock():
         return render_template('watchlist.html',
                              username=session['username'],
                              stocks=get_db().execute(
-                                 'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC',
+                                 convert_sql_placeholders('SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
                                  (session['user_id'],)
                              ).fetchall(),
                              error=f'Could not validate ticker: {ticker}')
@@ -269,11 +287,11 @@ def add_stock():
     conn = get_db()
     try:
         conn.execute(
-            'INSERT INTO watchlist (user_id, stock_ticker, company_name) VALUES (?, ?, ?)',
+            convert_sql_placeholders('INSERT INTO watchlist (user_id, stock_ticker, company_name) VALUES (?, ?, ?)'),
             (session['user_id'], ticker, company_name)
         )
         conn.commit()
-    except sqlite3.IntegrityError:
+    except (sqlite3.IntegrityError if not DATABASE_URL else psycopg2.IntegrityError):
         pass
     conn.close()
 
@@ -289,7 +307,7 @@ def remove_stock(ticker):
 
     conn = get_db()
     conn.execute(
-        'DELETE FROM watchlist WHERE user_id = ? AND stock_ticker = ?',
+        convert_sql_placeholders('DELETE FROM watchlist WHERE user_id = ? AND stock_ticker = ?'),
         (session['user_id'], ticker)
     )
     conn.commit()
@@ -364,7 +382,7 @@ def get_stock_news(ticker):
     try:
         conn = get_db()
         stock_info = conn.execute(
-            'SELECT company_name FROM watchlist WHERE user_id = ? AND stock_ticker = ?',
+            convert_sql_placeholders('SELECT company_name FROM watchlist WHERE user_id = ? AND stock_ticker = ?'),
             (session['user_id'], ticker)
         ).fetchone()
         conn.close()
@@ -758,5 +776,7 @@ Write a single, plain sentence (no formatting). Keep it under 12 words."""
         return jsonify({'error': 'Failed to generate daily summary'}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    # Only run in debug mode locally, not in production
+    debug_mode = not IS_PRODUCTION
+    app.run(debug=debug_mode, port=5001)
 

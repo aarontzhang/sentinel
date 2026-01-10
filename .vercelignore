@@ -1,0 +1,27 @@
+# Don't upload local database files
+*.db
+*.sqlite
+*.sqlite3
+watchlist.db
+
+# Don't upload environment variables (set in Vercel dashboard)
+.env
+
+# Don't upload Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Don't upload local virtual environment
+venv/
+env/
+ENV/
+
+# Don't upload macOS files
+.DS_Store
+
+# Don't upload development files
+PROJECT_NOTES.md
+Screenshot*.png
+current_tickers.txt
+sp500_*.txt
