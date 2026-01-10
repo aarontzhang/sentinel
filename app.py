@@ -10,7 +10,8 @@ if DATABASE_URL:
 from werkzeug.security import check_password_hash, generate_password_hash
 from functools import wraps
 import yfinance as yf
-from pygooglenews import GoogleNews
+import feedparser
+import requests
 import anthropic
 import os
 import json
@@ -65,6 +66,32 @@ def convert_sql_placeholders(sql):
     if DATABASE_URL:
         return sql.replace('?', '%s')
     return sql
+
+def search_google_news(query, when='2d'):
+    """Search Google News RSS feed - replacement for pygooglenews"""
+    try:
+        # Google News RSS feed URL
+        base_url = 'https://news.google.com/rss/search'
+        params = {
+            'q': query,
+            'hl': 'en-US',
+            'gl': 'US',
+            'ceid': 'US:en'
+        }
+
+        # Add time filter
+        if when:
+            params['when'] = when
+
+        # Construct URL
+        url = f"{base_url}?{'&'.join(f'{k}={requests.utils.quote(str(v))}' for k, v in params.items())}"
+
+        # Fetch and parse RSS feed
+        feed = feedparser.parse(url)
+        return feed
+    except Exception as e:
+        print(f"Error fetching Google News: {str(e)}")
+        return {'entries': []}
 
 def sanitize_for_ai_prompt(text):
     """Sanitize user input before including in AI prompts to prevent prompt injection"""
@@ -392,11 +419,9 @@ def get_stock_news(ticker):
 
         company_name = stock_info['company_name']
 
-        gn = GoogleNews()
-
         search_query = f"{company_name} stock {ticker}"
         # Get articles from last 2 days to ensure we have enough to filter
-        search_results = gn.search(search_query, when='2d')
+        search_results = search_google_news(search_query, when='2d')
 
         # Calculate cutoff time (24 hours ago)
         cutoff_time = datetime.now() - timedelta(hours=24)
