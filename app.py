@@ -1,6 +1,9 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 import sqlite3
 from datetime import datetime, timedelta
+import os
+import json
+import re
 
 # Database configuration - detect environment
 DATABASE_URL = os.getenv('DATABASE_URL')
@@ -13,9 +16,6 @@ import yfinance as yf
 import feedparser
 import requests
 import anthropic
-import os
-import json
-import re
 from dateutil import parser as date_parser
 from dotenv import load_dotenv
 from flask_limiter import Limiter
