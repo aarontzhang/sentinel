@@ -52,20 +52,45 @@ with open('stock_domains.json', 'r') as f:
     STOCK_DOMAINS = json.load(f)
     print(f"Loaded {len(STOCK_DOMAINS)} stock domains from JSON file")
 
+class DatabaseConnection:
+    """Wrapper to provide consistent interface for SQLite and PostgreSQL"""
+    def __init__(self, conn, is_postgres=False):
+        self.conn = conn
+        self.is_postgres = is_postgres
+
+    def execute(self, sql, params=None):
+        """Execute SQL query with automatic placeholder conversion"""
+        if self.is_postgres:
+            # Convert ? to %s for PostgreSQL
+            sql = sql.replace('?', '%s')
+            cursor = self.conn.cursor()
+            if params:
+                cursor.execute(sql, params)
+            else:
+                cursor.execute(sql)
+            return cursor
+        else:
+            # SQLite
+            if params:
+                return self.conn.execute(sql, params)
+            else:
+                return self.conn.execute(sql)
+
+    def commit(self):
+        return self.conn.commit()
+
+    def close(self):
+        return self.conn.close()
+
 def get_db():
     """Get database connection - PostgreSQL in production, SQLite in development"""
     if DATABASE_URL:
         conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+        return DatabaseConnection(conn, is_postgres=True)
     else:
         conn = sqlite3.connect('watchlist.db')
         conn.row_factory = sqlite3.Row
-    return conn
-
-def convert_sql_placeholders(sql):
-    """Convert SQL placeholders from ? to %s for PostgreSQL"""
-    if DATABASE_URL:
-        return sql.replace('?', '%s')
-    return sql
+        return DatabaseConnection(conn, is_postgres=False)
 
 def search_google_news(query, when='2d'):
     """Search Google News RSS feed - replacement for pygooglenews"""
@@ -127,7 +152,7 @@ def login():
 
         conn = get_db()
         user = conn.execute(
-            convert_sql_placeholders('SELECT * FROM users WHERE username = ?'), (username,)
+            'SELECT * FROM users WHERE username = ?', (username,)
         ).fetchone()
         conn.close()
 
@@ -138,7 +163,7 @@ def login():
 
             conn = get_db()
             conn.execute(
-                convert_sql_placeholders('UPDATE users SET last_login = ? WHERE id = ?'),
+                'UPDATE users SET last_login = ? WHERE id = ?',
                 (datetime.now(), user['id'])
             )
             conn.commit()
@@ -175,7 +200,7 @@ def register():
         # Check if username already exists
         conn = get_db()
         existing_user = conn.execute(
-            convert_sql_placeholders('SELECT id FROM users WHERE username = ?'), (username,)
+            'SELECT id FROM users WHERE username = ?', (username,)
         ).fetchone()
 
         if existing_user:
@@ -188,14 +213,14 @@ def register():
 
         try:
             conn.execute(
-                convert_sql_placeholders('INSERT INTO users (username, password_hash, last_login) VALUES (?, ?, ?)'),
+                'INSERT INTO users (username, password_hash, last_login) VALUES (?, ?, ?)'),
                 (username, password_hash, datetime.now())
             )
             conn.commit()
 
             # Get the new user
             user = conn.execute(
-                convert_sql_placeholders('SELECT * FROM users WHERE username = ?'), (username,)
+                'SELECT * FROM users WHERE username = ?', (username,)
             ).fetchone()
             conn.close()
 
@@ -224,7 +249,7 @@ def logout():
 def profile():
     conn = get_db()
     user = conn.execute(
-        convert_sql_placeholders('SELECT username, password_hash FROM users WHERE id = ?'),
+        'SELECT username, password_hash FROM users WHERE id = ?'),
         (session['user_id'],)
     ).fetchone()
     conn.close()
@@ -248,7 +273,7 @@ def get_password():
 def watchlist():
     conn = get_db()
     stocks = conn.execute(
-        convert_sql_placeholders('SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
+        'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
         (session['user_id'],)
     ).fetchall()
     conn.close()
@@ -269,7 +294,7 @@ def add_stock():
         return render_template('watchlist.html',
                              username=session['username'],
                              stocks=get_db().execute(
-                                 convert_sql_placeholders('SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
+                                 'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
                                  (session['user_id'],)
                              ).fetchall(),
                              error=f'Invalid ticker format: {ticker}. Tickers should be 1-10 characters.')
@@ -290,7 +315,7 @@ def add_stock():
             return render_template('watchlist.html',
                                  username=session['username'],
                                  stocks=get_db().execute(
-                                     convert_sql_placeholders('SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
+                                     'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
                                      (session['user_id'],)
                                  ).fetchall(),
                                  error=f'Invalid ticker: {ticker}. Please enter a valid stock ticker.')
@@ -306,7 +331,7 @@ def add_stock():
         return render_template('watchlist.html',
                              username=session['username'],
                              stocks=get_db().execute(
-                                 convert_sql_placeholders('SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
+                                 'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
                                  (session['user_id'],)
                              ).fetchall(),
                              error=f'Could not validate ticker: {ticker}')
@@ -314,7 +339,7 @@ def add_stock():
     conn = get_db()
     try:
         conn.execute(
-            convert_sql_placeholders('INSERT INTO watchlist (user_id, stock_ticker, company_name) VALUES (?, ?, ?)'),
+            'INSERT INTO watchlist (user_id, stock_ticker, company_name) VALUES (?, ?, ?)'),
             (session['user_id'], ticker, company_name)
         )
         conn.commit()
@@ -334,7 +359,7 @@ def remove_stock(ticker):
 
     conn = get_db()
     conn.execute(
-        convert_sql_placeholders('DELETE FROM watchlist WHERE user_id = ? AND stock_ticker = ?'),
+        'DELETE FROM watchlist WHERE user_id = ? AND stock_ticker = ?'),
         (session['user_id'], ticker)
     )
     conn.commit()
@@ -409,7 +434,7 @@ def get_stock_news(ticker):
     try:
         conn = get_db()
         stock_info = conn.execute(
-            convert_sql_placeholders('SELECT company_name FROM watchlist WHERE user_id = ? AND stock_ticker = ?'),
+            'SELECT company_name FROM watchlist WHERE user_id = ? AND stock_ticker = ?'),
             (session['user_id'], ticker)
         ).fetchone()
         conn.close()
