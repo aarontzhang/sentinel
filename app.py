@@ -417,25 +417,61 @@ def get_stock_price(ticker):
     try:
         stock = yf.Ticker(ticker)
 
-        # Get last 5 days of data to ensure we have at least 2 trading days
-        hist = stock.history(period='5d')
+        # Try multiple methods to get price data (serverless-friendly)
+        hist = None
+        current_price = None
+        change_percent = 0
 
-        print(f"Fetching {ticker}: got {len(hist)} rows")
+        try:
+            # Method 1: Try fast_info first (faster, less data)
+            fast_info = stock.fast_info
+            if fast_info and hasattr(fast_info, 'last_price'):
+                current_price = fast_info.last_price
+                # Try to get previous close for change calculation
+                if hasattr(fast_info, 'previous_close') and fast_info.previous_close:
+                    change_percent = ((current_price - fast_info.previous_close) / fast_info.previous_close) * 100
+                print(f"Fetched {ticker} using fast_info: ${current_price}")
+        except Exception as e:
+            print(f"fast_info failed for {ticker}: {str(e)}")
 
-        if hist.empty or len(hist) < 1:
-            print(f"Empty data for {ticker}")
-            return jsonify({'error': 'Rate limited - wait 2 min'}), 429
+        # Method 2: If fast_info didn't work, try history with shorter period
+        if current_price is None:
+            try:
+                # Try 1 day first (faster)
+                hist = stock.history(period='1d')
+                if hist.empty or len(hist) < 1:
+                    # If 1d is empty, try 2d
+                    hist = stock.history(period='2d')
 
-        # Get current (most recent) price
-        current_price = hist['Close'].iloc[-1]
+                print(f"Fetching {ticker} via history: got {len(hist)} rows")
 
-        # Calculate daily change (today vs yesterday)
-        if len(hist) >= 2:
-            previous_price = hist['Close'].iloc[-2]
-            change_percent = ((current_price - previous_price) / previous_price) * 100
-        else:
-            # Only one day of data, no change
-            change_percent = 0
+                if not hist.empty and len(hist) >= 1:
+                    current_price = hist['Close'].iloc[-1]
+
+                    # Calculate daily change if we have 2+ days
+                    if len(hist) >= 2:
+                        previous_price = hist['Close'].iloc[-2]
+                        change_percent = ((current_price - previous_price) / previous_price) * 100
+            except Exception as e:
+                print(f"history() failed for {ticker}: {str(e)}")
+
+        # Method 3: If both failed, try basic info
+        if current_price is None:
+            try:
+                info = stock.info
+                if info and 'currentPrice' in info:
+                    current_price = info['currentPrice']
+                    if 'previousClose' in info:
+                        previous_close = info['previousClose']
+                        change_percent = ((current_price - previous_close) / previous_close) * 100
+                    print(f"Fetched {ticker} using info: ${current_price}")
+            except Exception as e:
+                print(f"info failed for {ticker}: {str(e)}")
+
+        # If all methods failed
+        if current_price is None:
+            print(f"All methods failed for {ticker}")
+            return jsonify({'error': 'Unable to fetch stock data'}), 503
 
         return jsonify({
             'ticker': ticker,
@@ -444,7 +480,9 @@ def get_stock_price(ticker):
         })
 
     except Exception as e:
+        import traceback
         print(f"Error fetching {ticker}: {str(e)}")
+        print(f"Full traceback: {traceback.format_exc()}")
         return jsonify({'error': 'Service unavailable'}), 500
 
 @app.route('/api/stock_news/<ticker>')
