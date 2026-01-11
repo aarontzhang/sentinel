@@ -213,7 +213,7 @@ def register():
 
         try:
             conn.execute(
-                'INSERT INTO users (username, password_hash, last_login) VALUES (?, ?, ?)'),
+                'INSERT INTO users (username, password_hash, last_login) VALUES (?, ?, ?)',
                 (username, password_hash, datetime.now())
             )
             conn.commit()
@@ -249,7 +249,7 @@ def logout():
 def profile():
     conn = get_db()
     user = conn.execute(
-        'SELECT username, password_hash FROM users WHERE id = ?'),
+        'SELECT username, password_hash FROM users WHERE id = ?',
         (session['user_id'],)
     ).fetchone()
     conn.close()
@@ -273,7 +273,7 @@ def get_password():
 def watchlist():
     conn = get_db()
     stocks = conn.execute(
-        'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
+        'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC',
         (session['user_id'],)
     ).fetchall()
     conn.close()
@@ -294,7 +294,7 @@ def add_stock():
         return render_template('watchlist.html',
                              username=session['username'],
                              stocks=get_db().execute(
-                                 'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
+                                 'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC',
                                  (session['user_id'],)
                              ).fetchall(),
                              error=f'Invalid ticker format: {ticker}. Tickers should be 1-10 characters.')
@@ -315,7 +315,7 @@ def add_stock():
             return render_template('watchlist.html',
                                  username=session['username'],
                                  stocks=get_db().execute(
-                                     'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
+                                     'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC',
                                      (session['user_id'],)
                                  ).fetchall(),
                                  error=f'Invalid ticker: {ticker}. Please enter a valid stock ticker.')
@@ -331,7 +331,7 @@ def add_stock():
         return render_template('watchlist.html',
                              username=session['username'],
                              stocks=get_db().execute(
-                                 'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC'),
+                                 'SELECT * FROM watchlist WHERE user_id = ? ORDER BY date_added DESC',
                                  (session['user_id'],)
                              ).fetchall(),
                              error=f'Could not validate ticker: {ticker}')
@@ -339,7 +339,7 @@ def add_stock():
     conn = get_db()
     try:
         conn.execute(
-            'INSERT INTO watchlist (user_id, stock_ticker, company_name) VALUES (?, ?, ?)'),
+            'INSERT INTO watchlist (user_id, stock_ticker, company_name) VALUES (?, ?, ?)',
             (session['user_id'], ticker, company_name)
         )
         conn.commit()
@@ -359,7 +359,7 @@ def remove_stock(ticker):
 
     conn = get_db()
     conn.execute(
-        'DELETE FROM watchlist WHERE user_id = ? AND stock_ticker = ?'),
+        'DELETE FROM watchlist WHERE user_id = ? AND stock_ticker = ?',
         (session['user_id'], ticker)
     )
     conn.commit()
@@ -434,7 +434,7 @@ def get_stock_news(ticker):
     try:
         conn = get_db()
         stock_info = conn.execute(
-            'SELECT company_name FROM watchlist WHERE user_id = ? AND stock_ticker = ?'),
+            'SELECT company_name FROM watchlist WHERE user_id = ? AND stock_ticker = ?',
             (session['user_id'], ticker)
         ).fetchone()
         conn.close()
