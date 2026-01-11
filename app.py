@@ -314,7 +314,7 @@ def add_stock():
         try:
             # Try fast_info first (faster, less data)
             fast_info = stock.fast_info
-            if fast_info and hasattr(fast_info, 'last_price'):
+            if fast_info and 'lastPrice' in fast_info:
                 # Ticker is valid - get full info for company name
                 info = stock.info
             else:
@@ -425,11 +425,11 @@ def get_stock_price(ticker):
         try:
             # Method 1: Try fast_info first (faster, less data)
             fast_info = stock.fast_info
-            if fast_info and hasattr(fast_info, 'last_price'):
-                current_price = fast_info.last_price
+            if fast_info and 'lastPrice' in fast_info:
+                current_price = fast_info['lastPrice']
                 # Try to get previous close for change calculation
-                if hasattr(fast_info, 'previous_close') and fast_info.previous_close:
-                    change_percent = ((current_price - fast_info.previous_close) / fast_info.previous_close) * 100
+                if 'previousClose' in fast_info and fast_info['previousClose']:
+                    change_percent = ((current_price - fast_info['previousClose']) / fast_info['previousClose']) * 100
                 print(f"Fetched {ticker} using fast_info: ${current_price}")
         except Exception as e:
             print(f"fast_info failed for {ticker}: {str(e)}")
